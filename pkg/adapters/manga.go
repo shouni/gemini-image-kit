@@ -31,7 +31,7 @@ func NewGeminiMangaPageAdapter(core ImageGeneratorCore, aiClient gemini.Generati
 // GenerateMangaPage は、プロンプトと複数の参照画像URLを受け取り、マンガの1ページを生成します。
 // 内部で画像のダウンロード、キャッシュ、Geminiへのリクエスト、レスポンスのパースを一括で行います。
 func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
-	slog.Info("Gemini一括生成リクエストの準備中なのだ...", "model", a.model, "ref_count", len(req.ReferenceURLs))
+	slog.Info("Gemini一括生成リクエストを準備中", "model", a.model, "ref_count", len(req.ReferenceURLs))
 
 	// 1. プロンプト（テキストパーツ）の組み立て
 	// リクエストに含まれるテキストを最初のパーツとしてセットする。
@@ -69,8 +69,8 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 	}
 
 	// 4. Geminiクライアント経由で生成実行
-	// 組み立てたパーツ群（テキスト + 画像バイナリ）をGeminiに送り届けるのだ！
-	slog.Info("Geminiに生成を依頼するのだ。少し時間がかかるから待っててほしいのだ！")
+	// 組み立てたパーツ群（テキスト + 画像バイナリ）をGeminiにリクエストします
+	slog.Info("Geminiに画像生成をリクエストします")
 	resp, err := a.aiClient.GenerateWithParts(ctx, a.model, parts, opts)
 	if err != nil {
 		return nil, fmt.Errorf("Geminiでの一括ページ生成に失敗しました: %w", err)

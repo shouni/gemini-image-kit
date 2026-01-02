@@ -13,7 +13,7 @@ import (
 
 // --- Mocks ---
 
-// mockHTTPClient は httpkit.ClientInterface を完全に実装するのだ。
+// mockHTTPClient は httpkit.ClientInterface を実装します。
 type mockHTTPClient struct {
 	fetchFunc func(ctx context.Context, url string) ([]byte, error)
 }
