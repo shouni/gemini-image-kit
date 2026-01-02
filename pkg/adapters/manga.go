@@ -59,7 +59,7 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 		imageCount++
 	}
 
-	slog.Info("AIに送信するパーツ構成が完了したのだ", "total_parts", len(parts), "images", imageCount)
+	slog.Info("AIに送信するパーツ構成が完了しました", "total_parts", len(parts), "images", imageCount)
 
 	// 3. 生成オプションの設定
 	// アスペクト比やシード値など、生成時のパラメータをセットするのだ。

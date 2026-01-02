@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -58,6 +60,13 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 		}
 		// 予期せぬ型がキャッシュされていた場合に警告を出力
 		slog.WarnContext(ctx, "キャッシュされたデータが []byte 型ではありません", "url", url, "type", fmt.Sprintf("%T", cached))
+	}
+
+	// SSRF対策のバリデーション
+	if safe, err := isSafeURL(url); !safe || err != nil {
+		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLを検知したためブロックしました",
+			"url", url, "error", err)
+		return nil
 	}
 
 	// 画像のダウンロード
@@ -133,4 +142,39 @@ func seedToInt64(seed *int32) int64 {
 	// 指定なしの場合は 0 を返す。
 	// ※ 0 が有効なシード値として扱われるか、ランダム扱いになるかは Gemini API の仕様に準拠するのだ。
 	return 0
+}
+
+// isSafeURL は SSRF 対策として、URL がパブリックなものであるかを検証するのだ。
+func isSafeURL(rawURL string) (bool, error) {
+	parsedURL, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return false, fmt.Errorf("URLのパースに失敗しました: %w", err)
+	}
+
+	// スキームの制限（http/https のみ）
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return false, fmt.Errorf("許可されていないスキームです: %s", parsedURL.Scheme)
+	}
+
+	host := parsedURL.Hostname()
+	// ホスト名がIPアドレスか確認
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// ホスト名の場合、名前解決して検証するのだ
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			return false, fmt.Errorf("ホストの名前解決に失敗しました: %w", err)
+		}
+		if len(ips) == 0 {
+			return false, fmt.Errorf("IPアドレスが見つかりませんでした")
+		}
+		ip = ips[0]
+	}
+
+	// プライベートIP、ループバック、リンクローカルを遮断するのだ！
+	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return false, fmt.Errorf("プライベートまたは制限されたネットワークへのアクセスは禁止されています: %s", ip.String())
+	}
+
+	return true, nil
 }
