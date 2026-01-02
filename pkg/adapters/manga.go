@@ -11,15 +11,15 @@ import (
 	"google.golang.org/genai"
 )
 
-// GeminiMangaPageAdapter は、Geminiを利用してマンガのページ画像を生成するアダプターなのだ。
-// ImageGeneratorCore（画像処理）と aiClient（Gemini通信）を組み合わせて動作するのだ！
+// GeminiMangaPageAdapter は、Geminiを利用してマンガのページ画像を生成するアダプターです。
+// ImageGeneratorCore（画像処理）と aiClient（Gemini通信）を組み合わせて動作します。
 type GeminiMangaPageAdapter struct {
 	imgCore  ImageGeneratorCore
 	aiClient gemini.GenerativeModel
 	model    string
 }
 
-// NewGeminiMangaPageAdapter は、依存関係を注入してアダプターのインスタンスを作るのだ。
+// NewGeminiMangaPageAdapter は、依存関係を注入してアダプターのインスタンスを作成する。
 func NewGeminiMangaPageAdapter(core ImageGeneratorCore, aiClient gemini.GenerativeModel, model string) *GeminiMangaPageAdapter {
 	return &GeminiMangaPageAdapter{
 		imgCore:  core,
@@ -28,37 +28,35 @@ func NewGeminiMangaPageAdapter(core ImageGeneratorCore, aiClient gemini.Generati
 	}
 }
 
-// GenerateMangaPage は、プロンプトと複数の参照画像URLを受け取って、マンガの1ページを生成するのだ。
-// 内部で画像のダウンロード、キャッシュ、Geminiへのリクエスト、レスポンスのパースを一括で行うのだよ！
+// GenerateMangaPage は、プロンプトと複数の参照画像URLを受け取り、マンガの1ページを生成します。
+// 内部で画像のダウンロード、キャッシュ、Geminiへのリクエスト、レスポンスのパースを一括で行います。
 func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
 	slog.Info("Gemini一括生成リクエストの準備中なのだ...", "model", a.model, "ref_count", len(req.ReferenceURLs))
 
 	// 1. プロンプト（テキストパーツ）の組み立て
-	// リクエストに含まれるテキストを最初のパーツとしてセットするのだ。
+	// リクエストに含まれるテキストを最初のパーツとしてセットする。
 	parts := []*genai.Part{
 		{Text: req.Prompt},
 	}
 
 	// 2. 複数の参照画像をすべてパーツに追加
-	// URLをループで回して、imgCoreを使って画像データ（InlineData）に変換していくのだ。
+	// URLをループで回して、imgCoreを使って画像データ（InlineData）に変換していく。
 	imageCount := 0
 	for i, url := range req.ReferenceURLs {
 		if url == "" {
 			continue
 		}
 
-		// デバッグ出力：どの画像を読み込もうとしているか記録するのだ
-		slog.Debug("参照画像を読み込み中...", "index", i+1, "url", url)
-
-		// imgCoreがキャッシュ確認やダウンロードを代行してくれるのだ。
+		// キャッシュ確認とダウンロードを Core に委譲するのだ。
 		imgPart := a.imgCore.PrepareImagePart(ctx, url)
-		if imgPart != nil {
-			parts = append(parts, imgPart)
-			imageCount++
-		} else {
-			// 失敗しても止まらずに、警告を出してテキストのみ（または他の画像のみ）で続行するのだ。
-			slog.Warn("画像の読み込みに失敗したのだ。パスは正しいか？", "url", url)
+		if imgPart == nil {
+			// 失敗しても生成自体は続行し、警告ログを残すのだ。
+			slog.WarnContext(ctx, "参照画像の読み込みに失敗しました", "index", i, "url", url)
+			continue
 		}
+
+		parts = append(parts, imgPart)
+		imageCount++
 	}
 
 	slog.Info("AIに送信するパーツ構成が完了したのだ", "total_parts", len(parts), "images", imageCount)

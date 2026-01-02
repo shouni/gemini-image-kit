@@ -13,7 +13,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// ImageGeneratorCore は画像生成のコアロジックを抽象化するのだ
+// ImageGeneratorCore は画像生成のコアロジックを抽象化するインターフェースです。
 type ImageGeneratorCore interface {
 	PrepareImagePart(ctx context.Context, url string) *genai.Part
 	ToPart(data []byte) *genai.Part

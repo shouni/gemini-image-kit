@@ -47,7 +47,6 @@ type ImagePageRequest struct {
 type ImageResponse struct {
 	Data     []byte
 	MimeType string
-	CloudURL string
 	UsedSeed int64 // 戻り値は情報欠落を防ぐため int64
 }
 

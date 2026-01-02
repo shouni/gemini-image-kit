@@ -60,7 +60,7 @@ func (a *GeminiImageAdapter) GenerateMangaPanel(ctx context.Context, req domain.
 	}
 
 	// 3. 生成オプションの設定
-	// domain.Seed が *int32 なので、そのままパスできるのだ！
+	// domain.Seed は *int32 型のため、gemini.ImageOptions に直接渡すことができます。
 	opts := gemini.ImageOptions{
 		AspectRatio: req.AspectRatio,
 		Seed:        req.Seed,
