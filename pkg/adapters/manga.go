@@ -50,7 +50,7 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 		// キャッシュ確認とダウンロードを Core に委譲するのだ。
 		imgPart := a.imgCore.PrepareImagePart(ctx, url)
 		if imgPart == nil {
-			// 失敗しても生成自体は続行し、警告ログを残すのだ。
+			// 画像の準備に失敗しても処理を中断せず、警告ログを出力して続行する。
 			slog.WarnContext(ctx, "参照画像の読み込みに失敗しました", "index", i, "url", url)
 			continue
 		}

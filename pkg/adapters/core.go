@@ -124,8 +124,8 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	return nil, fmt.Errorf("画像データが見つかりませんでした")
 }
 
-// seedToInt64 は *int32 のシード値を安全に int64 に変換するヘルパーなのだ。
-// SDK 互換の型 (*int32) とドメイン層の型 (int64) の橋渡しをするのだ！
+// seedToInt64 は *int32 型のシード値を安全に int64 型へ変換するヘルパー関数です。
+// SDK互換の型(*int32)とドメイン層で扱う型(int64)の差異を吸収します。
 func seedToInt64(seed *int32) int64 {
 	if seed != nil {
 		return int64(*seed)

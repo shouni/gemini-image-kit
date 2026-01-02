@@ -18,7 +18,7 @@ type ImageAdapter interface {
 // GeminiImageAdapter は漫画のパネル生成を管理するアダプター層です。
 type GeminiImageAdapter struct {
 	imgCore     ImageGeneratorCore     // 共通ロジック保持（コンポジション）
-	apiClient   gemini.GenerativeModel // 通信クライアント
+	aiClient    gemini.GenerativeModel // 通信クライアント
 	model       string                 // 使用するモデル名
 	styleSuffix string                 // 共通スタイル（画風プロンプト）
 }
@@ -26,17 +26,17 @@ type GeminiImageAdapter struct {
 // NewGeminiImageAdapter は GeminiImageCore と依存関係を注入して初期化します。
 func NewGeminiImageAdapter(
 	core ImageGeneratorCore,
-	apiClient gemini.GenerativeModel,
+	aiClient gemini.GenerativeModel,
 	modelName string,
 	styleSuffix string,
 ) (*GeminiImageAdapter, error) {
-	if core == nil || apiClient == nil {
+	if core == nil || aiClient == nil {
 		return nil, fmt.Errorf("必要な依存関係（core または apiClient）が不足しています")
 	}
 
 	return &GeminiImageAdapter{
 		imgCore:     core,
-		apiClient:   apiClient,
+		aiClient:    aiClient,
 		model:       modelName,
 		styleSuffix: styleSuffix,
 	}, nil
@@ -67,7 +67,7 @@ func (a *GeminiImageAdapter) GenerateMangaPanel(ctx context.Context, req domain.
 	}
 
 	// 4. 通信実行
-	resp, err := a.apiClient.GenerateWithParts(ctx, a.model, parts, opts)
+	resp, err := a.aiClient.GenerateWithParts(ctx, a.model, parts, opts)
 	if err != nil {
 		return nil, fmt.Errorf("Geminiパネル生成エラー: %w", err)
 	}
