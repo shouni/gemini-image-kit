@@ -2,7 +2,7 @@
 
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/gemini-image-kit)](https://golang.org/)
-[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/gemini-reviewer-core)](https://github.com/shouni/gemini-image-kit/tags)
+[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/gemini-image-kit)](https://github.com/shouni/gemini-image-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 
@@ -10,7 +10,7 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットなのだ。
 
-単なる API ラッパーではなく、**「参照画像の自動ダウンロード・キャッシュ」「マルチモーダルなパーツ組み立て」「SDK互換のシード値管理」**といった、実践的なアプリケーション開発で必ず直面する「共通の課題」を解決するために設計されているのだ。
+単なる API ラッパーではなく、「**参照画像の自動ダウンロード・キャッシュ**」「**マルチモーダルなパーツ組み立て**」「**SDK互換のシード値管理**」といった、実践的なアプリケーション開発で必ず直面する「共通の課題」を解決するために設計されているのだ。
 
 ---
 
