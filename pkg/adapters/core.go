@@ -58,13 +58,12 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 		if data, ok := cached.([]byte); ok {
 			return c.ToPart(data)
 		}
-		// 予期せぬ型がキャッシュされていた場合に警告を出力
-		slog.WarnContext(ctx, "キャッシュされたデータが []byte 型ではありません", "url", url, "type", fmt.Sprintf("%T", cached))
+		slog.WarnContext(ctx, "キャッシュデータが不正な型です", "url", url, "type", fmt.Sprintf("%T", cached))
 	}
 
 	// SSRF対策のバリデーション
 	if safe, err := isSafeURL(url); !safe || err != nil {
-		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLを検知したためブロックしました",
+		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました",
 			"url", url, "error", err)
 		return nil
 	}
@@ -118,62 +117,58 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 		}
 	}
 
-	// プロンプトフィードバックの確認
-	if feedback := resp.RawResponse.PromptFeedback; feedback != nil {
-		if feedback.BlockReason != "" {
-			return nil, fmt.Errorf("プロンプトがブロックされました (理由: %s)", feedback.BlockReason)
-		}
-	}
-
-	// 異常終了理由の確認
+	// 安全フィルター等によるブロックの確認
 	if candidate.FinishReason != genai.FinishReasonUnspecified && candidate.FinishReason != genai.FinishReasonStop {
-		return nil, fmt.Errorf("画像生成が異常終了しました (理由: %s)", candidate.FinishReason)
+		return nil, fmt.Errorf("画像生成が異常終了しました (FinishReason: %s)", candidate.FinishReason)
 	}
 
 	return nil, fmt.Errorf("画像データが見つかりませんでした")
 }
 
 // seedToInt64 は *int32 型のシード値を安全に int64 型へ変換するヘルパー関数です。
-// SDK互換の型(*int32)とドメイン層で扱う型(int64)の差異を吸収します。
 func seedToInt64(seed *int32) int64 {
 	if seed != nil {
 		return int64(*seed)
 	}
-	// 指定なしの場合は 0 を返す。
-	// ※ 0 が有効なシード値として扱われるか、ランダム扱いになるかは Gemini API の仕様に準拠するのだ。
 	return 0
 }
 
-// isSafeURL は SSRF 対策として、URL がパブリックなものであるかを検証するのだ。
+// isSafeURL は SSRF 対策として URL を検証します。
+// 名前解決されたすべての IP アドレスに対してプライベート IP チェックを行います。
 func isSafeURL(rawURL string) (bool, error) {
 	parsedURL, err := url.ParseRequestURI(rawURL)
 	if err != nil {
-		return false, fmt.Errorf("URLのパースに失敗しました: %w", err)
+		return false, fmt.Errorf("URLパース失敗: %w", err)
 	}
 
-	// スキームの制限（http/https のみ）
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return false, fmt.Errorf("許可されていないスキームです: %s", parsedURL.Scheme)
+		return false, fmt.Errorf("不許可スキーム: %s", parsedURL.Scheme)
 	}
 
 	host := parsedURL.Hostname()
-	// ホスト名がIPアドレスか確認
-	ip := net.ParseIP(host)
-	if ip == nil {
-		// ホスト名の場合、名前解決して検証するのだ
-		ips, err := net.LookupIP(host)
+	var ips []net.IP
+
+	// 1. IPアドレスが直接指定されているか確認
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		// 2. ホスト名の場合、すべての IP を取得する
+		resolvedIPs, err := net.LookupIP(host)
 		if err != nil {
-			return false, fmt.Errorf("ホストの名前解決に失敗しました: %w", err)
+			return false, fmt.Errorf("名前解決失敗: %w", err)
 		}
-		if len(ips) == 0 {
-			return false, fmt.Errorf("IPアドレスが見つかりませんでした")
-		}
-		ip = ips[0]
+		ips = resolvedIPs
 	}
 
-	// プライベートIP、ループバック、リンクローカルを遮断するのだ！
-	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return false, fmt.Errorf("プライベートまたは制限されたネットワークへのアクセスは禁止されています: %s", ip.String())
+	if len(ips) == 0 {
+		return false, fmt.Errorf("IPが見つかりません")
+	}
+
+	// すべての解決された IP を検証する
+	for _, ip := range ips {
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return false, fmt.Errorf("制限されたネットワークへのアクセスを検知: %s", ip.String())
+		}
 	}
 
 	return true, nil
