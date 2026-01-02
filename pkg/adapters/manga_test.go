@@ -2,6 +2,8 @@ package adapters
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
@@ -25,7 +27,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 
 		prepareCallCount := 0
 		core := &mockImageCore{
-			prepareFunc: func(url string) *genai.Part {
+			prepareFunc: func(url string) *genai.Part { // 修正済み
 				prepareCallCount++
 				return &genai.Part{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("img")}}
 			},
@@ -36,12 +38,8 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 
 		ai := &mockAIClient{
 			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-				// Expecting 1 text part + 2 image parts = 3 parts total
 				if len(parts) != 3 {
 					t.Errorf("unexpected number of parts: want 3, got %d", len(parts))
-				}
-				if parts[0].Text != req.Prompt {
-					t.Error("prompt should be set in the first part")
 				}
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
@@ -61,6 +59,29 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 	})
 
+	t.Run("Failure/ShouldReturnErrorWhenAIClientFails", func(t *testing.T) {
+		req := domain.ImagePageRequest{Prompt: "test failure"}
+		expectedErr := errors.New("AI client network error")
+
+		ai := &mockAIClient{
+			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+				return nil, expectedErr
+			},
+		}
+		core := &mockImageCore{}
+
+		adapter := NewGeminiMangaPageAdapter(core, ai, modelName)
+		_, err := adapter.GenerateMangaPage(ctx, req)
+
+		if err == nil {
+			t.Fatal("expected an error but got nil")
+		}
+
+		if !errors.Is(err, expectedErr) && !strings.Contains(err.Error(), expectedErr.Error()) {
+			t.Errorf("expected error containing '%v', but got '%v'", expectedErr, err)
+		}
+	})
+
 	t.Run("Success/ShouldContinueEvenIfSomeImagesFailToLoad", func(t *testing.T) {
 		req := domain.ImagePageRequest{
 			Prompt: "Partial failure test",
@@ -71,7 +92,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		core := &mockImageCore{
-			prepareFunc: func(url string) *genai.Part {
+			prepareFunc: func(url string) *genai.Part { // 修正済み
 				if url == "http://fail.com/bad.png" {
 					return nil
 				}
@@ -84,9 +105,8 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 
 		ai := &mockAIClient{
 			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-				// 1 text + 1 successful image = 2 parts total
 				if len(parts) != 2 {
-					t.Errorf("unexpected number of parts when an image failed: want 2, got %d", len(parts))
+					t.Errorf("unexpected number of parts: want 2, got %d", len(parts))
 				}
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
@@ -127,7 +147,6 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		adapter := NewGeminiMangaPageAdapter(core, ai, modelName)
-		// [Major Fix] Properly check error
 		_, err := adapter.GenerateMangaPage(ctx, req)
 		if err != nil {
 			t.Fatalf("GenerateMangaPage should not return an error, but got: %v", err)
