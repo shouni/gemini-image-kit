@@ -85,8 +85,8 @@ if err != nil {
 ## 🤝 依存関係 (Dependencies)
 
 * [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini API 公式クライアント
-* [shouni/go-ai-client](https://www.google.com/search?q=https://github.com/shouni/go-ai-client) - AI通信の抽象化
-* [shouni/go-http-kit](https://www.google.com/search?q=https://github.com/shouni/go-http-kit) - 堅牢な HTTP クライアント
+* [shouni/go-ai-client](https://github.com/shouni/go-ai-client) - AI通信の抽象化
+* [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - 堅牢な HTTP クライアント
 
 ---
 
