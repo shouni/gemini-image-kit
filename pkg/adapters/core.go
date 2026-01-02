@@ -76,6 +76,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 func (c *GeminiImageCore) ToPart(data []byte) *genai.Part {
 	mimeType := http.DetectContentType(data)
 	if !strings.HasPrefix(mimeType, "image/") {
+		slog.Warn("MIMEタイプが画像ではないためPartに変換できませんでした", "detected_mime_type", mimeType)
 		return nil
 	}
 	return &genai.Part{
@@ -121,4 +122,15 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	return nil, fmt.Errorf("画像データが見つかりませんでした")
+}
+
+// seedToInt64 は *int32 のシード値を安全に int64 に変換するヘルパーなのだ。
+// SDK 互換の型 (*int32) とドメイン層の型 (int64) の橋渡しをするのだ！
+func seedToInt64(seed *int32) int64 {
+	if seed != nil {
+		return int64(*seed)
+	}
+	// 指定なしの場合は 0 を返す。
+	// ※ 0 が有効なシード値として扱われるか、ランダム扱いになるかは Gemini API の仕様に準拠するのだ。
+	return 0
 }

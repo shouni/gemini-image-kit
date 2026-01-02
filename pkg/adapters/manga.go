@@ -78,12 +78,8 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 
 	// 5. レスポンスの解析
 	// Geminiから返ってきた複雑なレスポンスから、画像バイナリだけを抽出するのだ。
-	var seedVal int64
-	if req.Seed != nil {
-		seedVal = int64(*req.Seed)
-	}
-
-	out, err := a.imgCore.ParseToResponse(resp, seedVal)
+	inputSeed := seedToInt64(req.Seed)
+	out, err := a.imgCore.ParseToResponse(resp, inputSeed)
 	if err != nil {
 		return nil, fmt.Errorf("レスポンスパースに失敗しました: %w", err)
 	}

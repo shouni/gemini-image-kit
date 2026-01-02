@@ -73,12 +73,7 @@ func (a *GeminiImageAdapter) GenerateMangaPanel(ctx context.Context, req domain.
 	}
 
 	// 5. Core を使ってレスポンスを解析し、ドメインモデルへマッピング
-	// ※解析時に UsedSeed を int64 で返すために req.Seed を参照するのだ
-	var inputSeed int64
-	if req.Seed != nil {
-		inputSeed = int64(*req.Seed)
-	}
-
+	inputSeed := seedToInt64(req.Seed)
 	out, err := a.imgCore.ParseToResponse(resp, inputSeed)
 	if err != nil {
 		return nil, err
