@@ -12,7 +12,6 @@ import (
 
 // --- Mocks ---
 
-// mockImageCore は adapters.ImageGeneratorCore を実装するのだ
 type mockImageCore struct {
 	prepareFunc func(url string) *genai.Part
 	parseFunc   func(resp *gemini.Response, seed int64) (*ImageOutput, error)
@@ -26,17 +25,14 @@ func (m *mockImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*Ima
 	return m.parseFunc(resp, seed)
 }
 
-// mockAIClient は gemini.GenerativeModel インターフェースを完全に実装するのだ
 type mockAIClient struct {
 	generateFunc func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error)
 }
 
-// 今回のメイン検証対象メソッドなのだ
 func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 	return m.generateFunc(model, parts, opts)
 }
 
-// インターフェースを満たすために必要な追加メソッドなのだ（空実装でOK）
 func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt string) (*gemini.Response, error) {
 	return nil, nil
 }
@@ -48,23 +44,23 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 	modelName := "imagen-3.0"
 	style := "anime style, high quality"
 
-	t.Run("正常系: プロンプトとオプションが正しくAIクライアントに渡されるのだ", func(t *testing.T) {
+	t.Run("Success/ShouldPassPromptAndOptionsToAIClientCorrectly", func(t *testing.T) {
 		seedValue := int32(1234)
 		req := domain.ImageGenerationRequest{
-			Prompt:      "ずんだもんが走る",
+			Prompt:      "zundamon running",
 			AspectRatio: "16:9",
 			Seed:        &seedValue,
 		}
 
 		ai := &mockAIClient{
 			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-				// プロンプト結合の検証
+				// Verify prompt combination
 				if !strings.Contains(parts[0].Text, req.Prompt) || !strings.Contains(parts[0].Text, style) {
-					t.Errorf("プロンプトが正しく結合されていないのだ: %s", parts[0].Text)
+					t.Errorf("prompt is not correctly combined: got %s", parts[0].Text)
 				}
-				// オプション伝搬の検証
+				// Verify option propagation
 				if opts.AspectRatio != req.AspectRatio || opts.Seed == nil || *opts.Seed != seedValue {
-					t.Error("オプションが正しく渡されていないのだ")
+					t.Errorf("options are not correctly passed: got %+v", opts)
 				}
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
@@ -78,21 +74,21 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 
 		adapter, err := NewGeminiImageAdapter(core, ai, modelName, style)
 		if err != nil {
-			t.Fatalf("アダプターの生成に失敗したのだ: %v", err)
+			t.Fatalf("failed to create adapter: %v", err)
 		}
 
 		resp, err := adapter.GenerateMangaPanel(ctx, req)
 		if err != nil {
-			t.Fatalf("エラーが発生したのだ: %v", err)
+			t.Fatalf("GenerateMangaPanel should not return error: %v", err)
 		}
 		if string(resp.Data) != "fake-image" || resp.UsedSeed != int64(seedValue) {
-			t.Error("レスポンスデータまたはシードが不正なのだ")
+			t.Error("unexpected response data or seed")
 		}
 	})
 
-	t.Run("参照画像がある場合にパーツに追加されるのだ", func(t *testing.T) {
+	t.Run("Success/ShouldAddImagePartWhenReferenceURLIsProvided", func(t *testing.T) {
 		req := domain.ImageGenerationRequest{
-			Prompt:       "ポーズをとる",
+			Prompt:       "posing",
 			ReferenceURL: "http://example.com/ref.png",
 		}
 
@@ -109,19 +105,27 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 
 		ai := &mockAIClient{
 			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-				// テキスト + 画像 の2パーツあることを検証
+				// Expecting 2 parts: Text + Image
 				if len(parts) != 2 {
-					t.Errorf("パーツ数が不正なのだ: %d", len(parts))
+					t.Errorf("unexpected number of parts: got %d, want 2", len(parts))
 				}
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
 		}
 
-		adapter, _ := NewGeminiImageAdapter(core, ai, modelName, style)
-		_, _ = adapter.GenerateMangaPanel(ctx, req)
+		adapter, err := NewGeminiImageAdapter(core, ai, modelName, style)
+		if err != nil {
+			t.Fatalf("failed to create adapter: %v", err)
+		}
+
+		// Properly check error
+		_, err = adapter.GenerateMangaPanel(ctx, req)
+		if err != nil {
+			t.Fatalf("GenerateMangaPanel should not return error: %v", err)
+		}
 
 		if !coreCalled {
-			t.Error("参照画像の処理が呼ばれなかったのだ")
+			t.Error("PrepareImagePart was not called")
 		}
 	})
 }

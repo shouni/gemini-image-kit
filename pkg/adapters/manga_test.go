@@ -13,9 +13,9 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 	ctx := context.Background()
 	modelName := "imagen-3.0"
 
-	t.Run("正常系: 複数の画像URLが正しくパーツに追加されるのだ", func(t *testing.T) {
+	t.Run("Success/ShouldAddMultipleImageURLsToParts", func(t *testing.T) {
 		req := domain.ImagePageRequest{
-			Prompt: "豪華なマンガの1ページ",
+			Prompt: "A luxurious manga page",
 			ReferenceURLs: []string{
 				"http://example.com/chara1.png",
 				"http://example.com/chara2.png",
@@ -23,7 +23,6 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 			AspectRatio: "3:4",
 		}
 
-		// 画像が2回呼ばれることを期待する mockImageCore
 		prepareCallCount := 0
 		core := &mockImageCore{
 			prepareFunc: func(url string) *genai.Part {
@@ -35,15 +34,14 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 			},
 		}
 
-		// パーツ構成を検証する mockAIClient
 		ai := &mockAIClient{
 			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-				// テキスト1つ + 画像2つ = 合計3パーツなのだ
+				// Expecting 1 text part + 2 image parts = 3 parts total
 				if len(parts) != 3 {
-					t.Errorf("パーツ数が正しくないのだ。期待: 3, 実際: %d", len(parts))
+					t.Errorf("unexpected number of parts: want 3, got %d", len(parts))
 				}
 				if parts[0].Text != req.Prompt {
-					t.Error("最初のパーツにプロンプトがセットされていないのだ")
+					t.Error("prompt should be set in the first part")
 				}
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
@@ -53,29 +51,29 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		resp, err := adapter.GenerateMangaPage(ctx, req)
 
 		if err != nil {
-			t.Fatalf("生成に失敗したのだ: %v", err)
+			t.Fatalf("GenerateMangaPage failed: %v", err)
 		}
 		if prepareCallCount != 2 {
-			t.Errorf("画像準備の呼び出し回数が不正なのだ。期待: 2, 実際: %d", prepareCallCount)
+			t.Errorf("unexpected call count for image preparation: want 2, got %d", prepareCallCount)
 		}
 		if string(resp.Data) != "final-page" {
-			t.Error("レスポンスデータが不正なのだ")
+			t.Error("unexpected response data")
 		}
 	})
 
-	t.Run("一部の画像DLに失敗しても残りで続行するのだ", func(t *testing.T) {
+	t.Run("Success/ShouldContinueEvenIfSomeImagesFailToLoad", func(t *testing.T) {
 		req := domain.ImagePageRequest{
-			Prompt: "一部失敗のテスト",
+			Prompt: "Partial failure test",
 			ReferenceURLs: []string{
 				"http://ok.com/image.png",
-				"http://fail.com/bad.png", // これは失敗させるのだ
+				"http://fail.com/bad.png",
 			},
 		}
 
 		core := &mockImageCore{
 			prepareFunc: func(url string) *genai.Part {
 				if url == "http://fail.com/bad.png" {
-					return nil // 失敗をシミュレート
+					return nil
 				}
 				return &genai.Part{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("ok")}}
 			},
@@ -86,9 +84,9 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 
 		ai := &mockAIClient{
 			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-				// テキスト1つ + 成功した画像1つ = 合計2パーツなのだ
+				// 1 text + 1 successful image = 2 parts total
 				if len(parts) != 2 {
-					t.Errorf("失敗した画像がスキップされず、パーツ数が不正なのだ: %d", len(parts))
+					t.Errorf("unexpected number of parts when an image failed: want 2, got %d", len(parts))
 				}
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
@@ -98,16 +96,16 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		resp, err := adapter.GenerateMangaPage(ctx, req)
 
 		if err != nil {
-			t.Errorf("画像の一部失敗で生成が止まってしまったのだ: %v", err)
+			t.Errorf("GenerateMangaPage should not fail on partial image loading error: %v", err)
 		}
 		if string(resp.Data) != "success-anyway" {
-			t.Error("データが不正なのだ")
+			t.Error("unexpected response data")
 		}
 	})
 
-	t.Run("空文字列のURLは無視されるのだ", func(t *testing.T) {
+	t.Run("Success/ShouldIgnoreEmptyURLs", func(t *testing.T) {
 		req := domain.ImagePageRequest{
-			Prompt:        "空URLチェック",
+			Prompt:        "Empty URL check",
 			ReferenceURLs: []string{"", "http://valid.com/img.png", ""},
 		}
 
@@ -129,10 +127,14 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		adapter := NewGeminiMangaPageAdapter(core, ai, modelName)
-		_, _ = adapter.GenerateMangaPage(ctx, req)
+		// [Major Fix] Properly check error
+		_, err := adapter.GenerateMangaPage(ctx, req)
+		if err != nil {
+			t.Fatalf("GenerateMangaPage should not return an error, but got: %v", err)
+		}
 
 		if prepareCallCount != 1 {
-			t.Errorf("空URLが正しくスキップされていないのだ。呼び出し回数: %d", prepareCallCount)
+			t.Errorf("empty URLs were not correctly ignored: call count %d", prepareCallCount)
 		}
 	})
 }
