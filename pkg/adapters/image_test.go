@@ -17,7 +17,6 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 	style := "anime style, high quality"
 
 	t.Run("Success/ShouldPassPromptAndOptionsToAIClientCorrectly", func(t *testing.T) {
-		// [修正ポイント] Seed を *int64 に合わせるのだ
 		var seedValue int64 = 1234
 		req := domain.ImageGenerationRequest{
 			Prompt:      "zundamon running",
@@ -31,7 +30,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 				if !strings.Contains(parts[0].Text, req.Prompt) || !strings.Contains(parts[0].Text, style) {
 					t.Errorf("prompt is not correctly combined: got %s", parts[0].Text)
 				}
-				// [修正ポイント] SDKに渡る際は *int32 に変換されているかチェックするのだ
+				// SDKに渡る際は *int32 に変換されているかチェックするのだ
 				if opts.Seed == nil || *opts.Seed != int32(seedValue) {
 					t.Errorf("seed was not correctly converted to int32: got %v", opts.Seed)
 				}
@@ -41,7 +40,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 
 		core := &mockImageCore{
 			parseFunc: func(resp *gemini.Response, seed int64) (*ImageOutput, error) {
-				// [修正ポイント] パース関数に渡る seed が int64 のままであることを確認
+				// パース関数に渡る seed が int64 のままであることを確認
 				return &ImageOutput{Data: []byte("fake-image"), MimeType: "image/png", UsedSeed: seed}, nil
 			},
 		}

@@ -19,7 +19,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 	modelName := "imagen-3.0"
 
 	t.Run("Success/ShouldAddMultipleImageURLsToParts", func(t *testing.T) {
-		// [修正ポイント] Seed を *int64 で定義
+		// Seed を *int64 で定義
 		var seedValue int64 = 999
 		req := domain.ImagePageRequest{
 			Prompt: "A luxurious manga page",
@@ -33,7 +33,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 
 		prepareCallCount := 0
 		core := &mockImageCore{
-			// [修正ポイント] 引数に context.Context を追加
+			// 引数に context.Context を追加
 			prepareFunc: func(ctx context.Context, url string) *genai.Part {
 				prepareCallCount++
 				return &genai.Part{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("img")}}
@@ -49,7 +49,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 				if len(parts) != 3 {
 					t.Errorf("unexpected number of parts: want 3, got %d", len(parts))
 				}
-				// [修正ポイント] SDKに *int32 で渡っているか確認
+				// SDKに *int32 で渡っているか確認
 				if opts.Seed == nil || *opts.Seed != int32(seedValue) {
 					t.Errorf("seed conversion error: got %v", opts.Seed)
 				}
@@ -107,7 +107,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		core := &mockImageCore{
-			// [修正ポイント] 引数に context.Context を追加
+			// 引数に context.Context を追加
 			prepareFunc: func(ctx context.Context, url string) *genai.Part {
 				if url == "http://fail.com/bad.png" {
 					return nil
