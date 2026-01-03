@@ -38,7 +38,7 @@
 ```text
 pkg/
 ├── domain/            # 共通ドメインモデル（Request/Response, Character定義など）
-│   └── manga.go       # 漫画・画像生成に関するデータ構造
+│   └── image.go       # 漫画・画像生成に関するデータ構造
 └── adapters/          # 具体的な実装（アダプター層）
     ├── core.go        # 画像DL、キャッシュ、パースの共通基盤 (GeminiImageCore)
     ├── image.go       # 単体パネル・画像生成 (GeminiImageAdapter)
