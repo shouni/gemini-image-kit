@@ -125,12 +125,16 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	return nil, fmt.Errorf("画像データが見つかりませんでした")
 }
 
-// seedToInt64 は *int32 型のシード値を安全に int64 型へ変換するヘルパー関数です。
-func seedToInt64(seed *int32) int64 {
-	if seed != nil {
-		return int64(*seed)
+// seedToPtrInt32 は domain の *int64 を Gemini SDK 用の *int32 に安全に変換するのだ
+// 呼び出し側の GeminiImageAdapter などで使用することを想定しているのだ。
+func seedToPtrInt32(seed *int64) *int32 {
+	if seed == nil {
+		return nil
 	}
-	return 0
+	// int32 の範囲に収まるようにキャストするのだ。
+	// domain 層ですでに 0x7FFFFFFF マスクされているなら安全なのだ！
+	val := int32(*seed)
+	return &val
 }
 
 // isSafeURL は SSRF 対策として URL を検証します。

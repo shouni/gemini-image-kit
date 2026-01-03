@@ -6,7 +6,7 @@ type ImageGenerationRequest struct {
 	Prompt         string
 	NegativePrompt string
 	AspectRatio    string
-	Seed           *int32 // nil でランダム、値指定で固定。Gemini SDK 互換
+	Seed           *int64
 	ReferenceURL   string
 }
 
@@ -16,7 +16,7 @@ type ImagePageRequest struct {
 	NegativePrompt string
 	ReferenceURLs  []string
 	AspectRatio    string
-	Seed           *int32 // ImageGenerationRequest と型を統一
+	Seed           *int64
 }
 
 // ImageResponse は生成された画像データとそのメタデータです。

@@ -40,17 +40,14 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 	}
 
 	// 2. 複数の参照画像をすべてパーツに追加
-	// URLをループで回して、imgCoreを使って画像データ（InlineData）に変換していく。
 	imageCount := 0
 	for i, url := range req.ReferenceURLs {
 		if url == "" {
 			continue
 		}
 
-		// キャッシュ確認とダウンロードを Core に委譲するのだ。
 		imgPart := a.imgCore.PrepareImagePart(ctx, url)
 		if imgPart == nil {
-			// 画像の準備に失敗しても処理を中断せず、警告ログを出力して続行する。
 			slog.WarnContext(ctx, "参照画像の読み込みに失敗しました", "index", i, "url", url)
 			continue
 		}
@@ -62,14 +59,13 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 	slog.Info("AIに送信するパーツ構成が完了しました", "total_parts", len(parts), "images", imageCount)
 
 	// 3. 生成オプションの設定
-	// アスペクト比やシード値など、生成時のパラメータをセットするのだ。
+	// domain.Seed (*int64) を SDK 用の *int32 に変換
 	opts := gemini.ImageOptions{
 		AspectRatio: req.AspectRatio,
-		Seed:        req.Seed,
+		Seed:        seedToPtrInt32(req.Seed),
 	}
 
 	// 4. Geminiクライアント経由で生成実行
-	// 組み立てたパーツ群（テキスト + 画像バイナリ）をGeminiにリクエストします
 	slog.Info("Geminiに画像生成をリクエストします")
 	resp, err := a.aiClient.GenerateWithParts(ctx, a.model, parts, opts)
 	if err != nil {
@@ -77,14 +73,17 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 	}
 
 	// 5. レスポンスの解析
-	// Geminiから返ってきた複雑なレスポンスから、画像バイナリだけを抽出するのだ。
-	inputSeed := seedToInt64(req.Seed)
+	// domain の *int64 を安全に int64 として抽出して ParseToResponse に渡すのだ
+	var inputSeed int64
+	if req.Seed != nil {
+		inputSeed = *req.Seed
+	}
+
 	out, err := a.imgCore.ParseToResponse(resp, inputSeed)
 	if err != nil {
 		return nil, fmt.Errorf("レスポンスパースに失敗しました: %w", err)
 	}
 
-	// 最後にドメイン層が扱いやすい ImageResponse 型に変換して返却するのだ！
 	return &domain.ImageResponse{
 		Data:     out.Data,
 		MimeType: out.MimeType,
