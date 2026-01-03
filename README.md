@@ -54,7 +54,7 @@ pkg/
 
 ```go
 import (
-    "ap-manga-go/pkg/adapters"
+    "github.com/shouni/gemini-image-kit/pkg/adapters"
     "github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 )
 
