@@ -130,10 +130,10 @@ func seedToPtrInt32(seed *int64) *int32 {
 	if seed == nil {
 		return nil
 	}
-	// int32の正の最大値 (2^31 - 1) でマスクし、オーバーフローを防止します。
-	// これにより、シード値の再現性を担保しつつ、安全な型変換を実現します。
-	const int32PositiveMax = 0x7FFFFFFF
-	val := int32(*seed & int32PositiveMax)
+	// int64 から int32 へ型キャストします。
+	// Goの仕様により、値がint32の範囲を超える場合は上位ビットが切り捨てられますが、
+	// これはシード値の再現性において期待される挙動です。
+	val := int32(*seed)
 	return &val
 }
 
