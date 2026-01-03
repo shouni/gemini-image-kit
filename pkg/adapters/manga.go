@@ -74,10 +74,7 @@ func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req doma
 
 	// 5. レスポンスの解析
 	// domain の *int64 型のシードを ParseToResponse に渡すため int64 型で抽出します。
-	var inputSeed int64
-	if req.Seed != nil {
-		inputSeed = *req.Seed
-	}
+	inputSeed := dereferenceSeed(req.Seed)
 
 	out, err := a.imgCore.ParseToResponse(resp, inputSeed)
 	if err != nil {

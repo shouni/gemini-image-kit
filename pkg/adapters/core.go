@@ -137,6 +137,14 @@ func seedToPtrInt32(seed *int64) *int32 {
 	return &val
 }
 
+// dereferenceSeed safely dereferences a *int64 seed to an int64 value, returning 0 if nil.
+func dereferenceSeed(seed *int64) int64 {
+	if seed != nil {
+		return *seed
+	}
+	return 0
+}
+
 // isSafeURL は SSRF 対策として URL を検証します。
 // 名前解決されたすべての IP アドレスに対してプライベート IP チェックを行います。
 func isSafeURL(rawURL string) (bool, error) {
