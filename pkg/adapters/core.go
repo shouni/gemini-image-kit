@@ -125,15 +125,15 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	return nil, fmt.Errorf("画像データが見つかりませんでした")
 }
 
-// seedToPtrInt32 は domain の *int64 を Gemini SDK 用の *int32 に安全に変換するのだ
-// 呼び出し側の GeminiImageAdapter などで使用することを想定しているのだ。
+// seedToPtrInt32 は domain の *int64 を Gemini SDK 用の *int32 に安全に変換します。
 func seedToPtrInt32(seed *int64) *int32 {
 	if seed == nil {
 		return nil
 	}
-	// int32 の範囲に収まるようにキャストするのだ。
-	// domain 層ですでに 0x7FFFFFFF マスクされているなら安全なのだ！
-	val := int32(*seed)
+	// int32の正の最大値 (2^31 - 1) でマスクし、オーバーフローを防止します。
+	// これにより、シード値の再現性を担保しつつ、安全な型変換を実現します。
+	const int32PositiveMax = 0x7FFFFFFF
+	val := int32(*seed & int32PositiveMax)
 	return &val
 }
 
