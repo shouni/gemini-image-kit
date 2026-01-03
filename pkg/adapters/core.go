@@ -125,10 +125,22 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	return nil, fmt.Errorf("画像データが見つかりませんでした")
 }
 
-// seedToInt64 は *int32 型のシード値を安全に int64 型へ変換するヘルパー関数です。
-func seedToInt64(seed *int32) int64 {
+// seedToPtrInt32 は domain の *int64 を Gemini SDK 用の *int32 に安全に変換します。
+func seedToPtrInt32(seed *int64) *int32 {
+	if seed == nil {
+		return nil
+	}
+	// int64 から int32 へ型キャストします。
+	// Goの仕様により、値がint32の範囲を超える場合は上位ビットが切り捨てられますが、
+	// これはシード値の再現性において期待される挙動です。
+	val := int32(*seed)
+	return &val
+}
+
+// dereferenceSeed safely dereferences a *int64 seed to an int64 value, returning 0 if nil.
+func dereferenceSeed(seed *int64) int64 {
 	if seed != nil {
-		return int64(*seed)
+		return *seed
 	}
 	return 0
 }

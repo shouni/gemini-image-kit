@@ -60,10 +60,10 @@ func (a *GeminiImageAdapter) GenerateMangaPanel(ctx context.Context, req domain.
 	}
 
 	// 3. 生成オプションの設定
-	// domain.Seed は *int32 型のため、gemini.ImageOptions に直接渡すことができます。
+	// domain.Seed (*int64) を SDK 用の *int32 に変換する
 	opts := gemini.ImageOptions{
 		AspectRatio: req.AspectRatio,
-		Seed:        req.Seed,
+		Seed:        seedToPtrInt32(req.Seed),
 	}
 
 	// 4. 通信実行
@@ -72,8 +72,10 @@ func (a *GeminiImageAdapter) GenerateMangaPanel(ctx context.Context, req domain.
 		return nil, fmt.Errorf("Geminiパネル生成エラー: %w", err)
 	}
 
-	// 5. Core を使ってレスポンスを解析し、ドメインモデルへマッピング
-	inputSeed := seedToInt64(req.Seed)
+	// 5. Core を使ってレスポンスを解析し、ドメインモデルへマッピングします。
+	// 入力シード値を UsedSeed の初期値として扱うため、int64 型で抽出します。
+	inputSeed := dereferenceSeed(req.Seed)
+
 	out, err := a.imgCore.ParseToResponse(resp, inputSeed)
 	if err != nil {
 		return nil, err

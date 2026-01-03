@@ -17,7 +17,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 	style := "anime style, high quality"
 
 	t.Run("Success/ShouldPassPromptAndOptionsToAIClientCorrectly", func(t *testing.T) {
-		seedValue := int32(1234)
+		var seedValue int64 = 1234
 		req := domain.ImageGenerationRequest{
 			Prompt:      "zundamon running",
 			AspectRatio: "16:9",
@@ -26,8 +26,13 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 
 		ai := &mockAIClient{
 			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+				// プロンプト結合のチェック
 				if !strings.Contains(parts[0].Text, req.Prompt) || !strings.Contains(parts[0].Text, style) {
 					t.Errorf("prompt is not correctly combined: got %s", parts[0].Text)
+				}
+				// SDKに渡る際は *int32 に変換されているかチェックするのだ
+				if opts.Seed == nil || *opts.Seed != int32(seedValue) {
+					t.Errorf("seed was not correctly converted to int32: got %v", opts.Seed)
 				}
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
@@ -35,6 +40,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 
 		core := &mockImageCore{
 			parseFunc: func(resp *gemini.Response, seed int64) (*ImageOutput, error) {
+				// パース関数に渡る seed が int64 のままであることを確認
 				return &ImageOutput{Data: []byte("fake-image"), MimeType: "image/png", UsedSeed: seed}, nil
 			},
 		}
@@ -47,6 +53,9 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 		}
 		if string(resp.Data) != "fake-image" {
 			t.Error("unexpected response data")
+		}
+		if resp.UsedSeed != seedValue {
+			t.Errorf("expected seed %d, got %d", seedValue, resp.UsedSeed)
 		}
 	})
 
@@ -64,8 +73,8 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 		adapter, _ := NewGeminiImageAdapter(core, ai, modelName, style)
 		_, err := adapter.GenerateMangaPanel(ctx, req)
 
-		if !errors.Is(err, expectedErr) {
-			t.Errorf("expected error '%v', but got '%v'", expectedErr, err)
+		if err == nil || !strings.Contains(err.Error(), expectedErr.Error()) {
+			t.Errorf("expected error containing '%v', but got '%v'", expectedErr, err)
 		}
 	})
 
