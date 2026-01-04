@@ -11,22 +11,22 @@ import (
 	"google.golang.org/genai"
 )
 
-// MangaPageAdapter は漫画のページ画像を生成するためのインターフェースです。
-type MangaPageAdapter interface {
+// MangaPageGenerator は漫画のページ画像を生成するためのインターフェースです。
+type MangaPageGenerator interface {
 	GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error)
 }
 
-// GeminiMangaPageAdapter は、Geminiを利用してマンガのページ画像を生成するアダプターです。
+// GeminiMangaPageGenerator は、Geminiを利用してマンガのページ画像を生成するアダプターです。
 // ImageGeneratorCore（画像処理）と aiClient（Gemini通信）を組み合わせて動作します。
-type GeminiMangaPageAdapter struct {
+type GeminiMangaPageGenerator struct {
 	imgCore  ImageGeneratorCore
 	aiClient gemini.GenerativeModel
 	model    string
 }
 
-// NewGeminiMangaPageAdapter は、依存関係を注入してアダプターのインスタンスを作成する。
-func NewGeminiMangaPageAdapter(core ImageGeneratorCore, aiClient gemini.GenerativeModel, model string) *GeminiMangaPageAdapter {
-	return &GeminiMangaPageAdapter{
+// NewGeminiMangaPageGenerator は、依存関係を注入してアダプターのインスタンスを作成する。
+func NewGeminiMangaPageGenerator(core ImageGeneratorCore, aiClient gemini.GenerativeModel, model string) *GeminiMangaPageGenerator {
+	return &GeminiMangaPageGenerator{
 		imgCore:  core,
 		aiClient: aiClient,
 		model:    model,
@@ -35,7 +35,7 @@ func NewGeminiMangaPageAdapter(core ImageGeneratorCore, aiClient gemini.Generati
 
 // GenerateMangaPage は、プロンプトと複数の参照画像URLを受け取り、マンガの1ページを生成します。
 // 内部で画像のダウンロード、キャッシュ、Geminiへのリクエスト、レスポンスのパースを一括で行います。
-func (a *GeminiMangaPageAdapter) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
+func (a *GeminiMangaPageGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
 	slog.Info("Gemini一括生成リクエストを準備中", "model", a.model, "ref_count", len(req.ReferenceURLs))
 
 	// 1. プロンプト（テキストパーツ）の組み立て

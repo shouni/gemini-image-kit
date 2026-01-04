@@ -45,7 +45,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 			},
 		}
 
-		adapter, _ := NewGeminiImageAdapter(core, ai, modelName, style)
+		adapter, _ := NewGeminiImageGenerator(core, ai, modelName, style)
 		resp, err := adapter.GenerateMangaPanel(ctx, req)
 
 		if err != nil {
@@ -70,7 +70,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 		}
 		core := &mockImageCore{}
 
-		adapter, _ := NewGeminiImageAdapter(core, ai, modelName, style)
+		adapter, _ := NewGeminiImageGenerator(core, ai, modelName, style)
 		_, err := adapter.GenerateMangaPanel(ctx, req)
 
 		if err == nil || !strings.Contains(err.Error(), expectedErr.Error()) {
@@ -93,7 +93,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 			},
 		}
 
-		adapter, _ := NewGeminiImageAdapter(core, ai, modelName, style)
+		adapter, _ := NewGeminiImageGenerator(core, ai, modelName, style)
 		_, err := adapter.GenerateMangaPanel(ctx, req)
 
 		if !errors.Is(err, expectedErr) {

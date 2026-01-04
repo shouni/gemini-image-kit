@@ -10,31 +10,27 @@ import (
 	"google.golang.org/genai"
 )
 
-// ImageAdapter は漫画のパネル画像を生成するためのインターフェースです。
-type ImageAdapter interface {
+// ImageGenerator は漫画のパネル画像を生成するためのインターフェースです。
+type ImageGenerator interface {
 	GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error)
 }
 
-// GeminiImageAdapter は漫画のパネル生成を管理するアダプター層です。
-type GeminiImageAdapter struct {
+// GeminiImageGenerator は漫画のパネル生成を管理するアダプター層です。
+type GeminiImageGenerator struct {
 	imgCore     ImageGeneratorCore     // 共通ロジック保持（コンポジション）
 	aiClient    gemini.GenerativeModel // 通信クライアント
 	model       string                 // 使用するモデル名
 	styleSuffix string                 // 共通スタイル（画風プロンプト）
 }
 
-// NewGeminiImageAdapter は GeminiImageCore と依存関係を注入して初期化します。
-func NewGeminiImageAdapter(
+// NewGeminiImageGenerator  は GeminiImageCore と依存関係を注入して初期化します。
+func NewGeminiImageGenerator(
 	core ImageGeneratorCore,
 	aiClient gemini.GenerativeModel,
 	modelName string,
 	styleSuffix string,
-) (*GeminiImageAdapter, error) {
-	if core == nil || aiClient == nil {
-		return nil, fmt.Errorf("必要な依存関係（core または apiClient）が不足しています")
-	}
-
-	return &GeminiImageAdapter{
+) (*GeminiImageGenerator, error) {
+	return &GeminiImageGenerator{
 		imgCore:     core,
 		aiClient:    aiClient,
 		model:       modelName,
@@ -43,7 +39,7 @@ func NewGeminiImageAdapter(
 }
 
 // GenerateMangaPanel はドメインのリクエストを Gemini API の形式に変換して実行します。
-func (a *GeminiImageAdapter) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
+func (a *GeminiImageGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
 	// 1. プロンプトの構築（ユーザー指示 + 画風サフィックス）
 	fullPrompt := a.buildPrompt(req.Prompt)
 
@@ -89,7 +85,7 @@ func (a *GeminiImageAdapter) GenerateMangaPanel(ctx context.Context, req domain.
 }
 
 // buildPrompt は設定された画風サフィックスをプロンプトに結合します。
-func (a *GeminiImageAdapter) buildPrompt(basePrompt string) string {
+func (a *GeminiImageGenerator) buildPrompt(basePrompt string) string {
 	if a.styleSuffix != "" {
 		return fmt.Sprintf("%s, %s", basePrompt, a.styleSuffix)
 	}

@@ -57,7 +57,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 			},
 		}
 
-		adapter := NewGeminiMangaPageAdapter(core, ai, modelName)
+		adapter := NewGeminiMangaPageGenerator(core, ai, modelName)
 		resp, err := adapter.GenerateMangaPage(ctx, req)
 
 		if err != nil {
@@ -85,7 +85,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 		core := &mockImageCore{}
 
-		adapter := NewGeminiMangaPageAdapter(core, ai, modelName)
+		adapter := NewGeminiMangaPageGenerator(core, ai, modelName)
 		_, err := adapter.GenerateMangaPage(ctx, req)
 
 		if err == nil {
@@ -129,7 +129,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 			},
 		}
 
-		adapter := NewGeminiMangaPageAdapter(core, ai, modelName)
+		adapter := NewGeminiMangaPageGenerator(core, ai, modelName)
 		resp, err := adapter.GenerateMangaPage(ctx, req)
 
 		if err != nil {
@@ -163,7 +163,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 			},
 		}
 
-		adapter := NewGeminiMangaPageAdapter(core, ai, modelName)
+		adapter := NewGeminiMangaPageGenerator(core, ai, modelName)
 		_, err := adapter.GenerateMangaPage(ctx, req)
 		if err != nil {
 			t.Fatalf("GenerateMangaPage should not return an error, but got: %v", err)
