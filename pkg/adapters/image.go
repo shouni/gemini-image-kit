@@ -28,24 +28,18 @@ func NewGeminiImageGenerator(
 	core ImageGeneratorCore,
 	aiClient gemini.GenerativeModel,
 	modelName string,
-	styleSuffix string,
 ) (*GeminiImageGenerator, error) {
 	return &GeminiImageGenerator{
-		imgCore:     core,
-		aiClient:    aiClient,
-		model:       modelName,
-		styleSuffix: styleSuffix,
+		imgCore:  core,
+		aiClient: aiClient,
+		model:    modelName,
 	}, nil
 }
 
 // GenerateMangaPanel はドメインのリクエストを Gemini API の形式に変換して実行します。
 func (a *GeminiImageGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
-	// 1. プロンプトの構築（ユーザー指示 + 画風サフィックス）
-	fullPrompt := a.buildPrompt(req.Prompt)
-
-	// 2. 入力パーツ（Parts）の組み立て
 	parts := []*genai.Part{
-		{Text: fullPrompt},
+		{Text: req.Prompt},
 	}
 
 	// 参照画像があれば Core の機能を使って追加
@@ -55,20 +49,20 @@ func (a *GeminiImageGenerator) GenerateMangaPanel(ctx context.Context, req domai
 		}
 	}
 
-	// 3. 生成オプションの設定
+	// 生成オプションの設定
 	// domain.Seed (*int64) を SDK 用の *int32 に変換する
 	opts := gemini.ImageOptions{
 		AspectRatio: req.AspectRatio,
 		Seed:        seedToPtrInt32(req.Seed),
 	}
 
-	// 4. 通信実行
+	// 通信実行
 	resp, err := a.aiClient.GenerateWithParts(ctx, a.model, parts, opts)
 	if err != nil {
 		return nil, fmt.Errorf("Geminiパネル生成エラー: %w", err)
 	}
 
-	// 5. Core を使ってレスポンスを解析し、ドメインモデルへマッピングします。
+	// Core を使ってレスポンスを解析し、ドメインモデルへマッピングします。
 	// 入力シード値を UsedSeed の初期値として扱うため、int64 型で抽出します。
 	inputSeed := dereferenceSeed(req.Seed)
 
@@ -82,12 +76,4 @@ func (a *GeminiImageGenerator) GenerateMangaPanel(ctx context.Context, req domai
 		MimeType: out.MimeType,
 		UsedSeed: out.UsedSeed,
 	}, nil
-}
-
-// buildPrompt は設定された画風サフィックスをプロンプトに結合します。
-func (a *GeminiImageGenerator) buildPrompt(basePrompt string) string {
-	if a.styleSuffix != "" {
-		return fmt.Sprintf("%s, %s", basePrompt, a.styleSuffix)
-	}
-	return basePrompt
 }
