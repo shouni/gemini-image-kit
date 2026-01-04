@@ -83,6 +83,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 func (c *GeminiImageCore) ToPart(data []byte) *genai.Part {
 	mimeType := http.DetectContentType(data)
 	if !strings.HasPrefix(mimeType, "image/") {
+		slog.Warn("MIMEタイプが画像ではないためPartに変換できませんでした", "detected_mime_type", mimeType)
 		return nil
 	}
 	return &genai.Part{
