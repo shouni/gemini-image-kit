@@ -11,6 +11,11 @@ import (
 	"google.golang.org/genai"
 )
 
+// MangaPageAdapter は漫画のページ画像を生成するためのインターフェースです。
+type MangaPageAdapter interface {
+	GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error)
+}
+
 // GeminiMangaPageAdapter は、Geminiを利用してマンガのページ画像を生成するアダプターです。
 // ImageGeneratorCore（画像処理）と aiClient（Gemini通信）を組み合わせて動作します。
 type GeminiMangaPageAdapter struct {
