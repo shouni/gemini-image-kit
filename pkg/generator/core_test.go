@@ -53,7 +53,6 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 
 	t.Run("キャッシュにある場合は安全チェックを飛ばしてキャッシュを返すのだ", func(t *testing.T) {
 		cache := &mockCache{data: map[string]interface{}{safeURL: validPng}}
-		// 同一パッケージ内なので NewGeminiImageCore を直接呼べるのだ
 		core := NewGeminiImageCore(nil, cache, time.Hour)
 
 		part := core.PrepareImagePart(ctx, safeURL)
@@ -77,9 +76,9 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 
 		part := core.PrepareImagePart(ctx, safeURL)
 
-		// isSafeURL の実装に依存するが、テスト環境により nil になる場合は skip するのだ
+		// ネットワーク環境等でパブリックURLの名前解決に失敗する場合はSkipするのだ
 		if part == nil {
-			t.Skip("ネットワークまたは名前解決制限によりスキップするのだ")
+			t.Skip("外部ネットワークへの名前解決制限によりテストをスキップするのだ")
 			return
 		}
 
@@ -92,15 +91,55 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	})
 
 	t.Run("安全でないURLはブロックするのだ", func(t *testing.T) {
-		unsafeURL := "ftp://example.com/test.png" // スキーム不正
 		core := NewGeminiImageCore(&mockHTTPClient{}, nil, time.Hour)
 
-		part := core.PrepareImagePart(ctx, unsafeURL)
+		cases := []struct {
+			name string
+			url  string
+		}{
+			{"スキーム不正(ftp)", "ftp://example.com/test.png"},
+			{"ループバック", "http://127.0.0.1/attack"},
+			{"プライベートIP", "http://192.168.1.1/internal"},
+		}
 
-		if part != nil {
-			t.Error("不適切なスキームがブロックされなかったのだ")
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				part := core.PrepareImagePart(ctx, tc.url)
+				if part != nil {
+					t.Errorf("%s がブロックされなかったのだ", tc.name)
+				}
+			})
 		}
 	})
+}
+
+func TestIsSafeURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"正常なパブリックURL", "https://www.google.com/favicon.ico", false},
+		{"不正なスキーム", "gopher://example.com", true},
+		{"ループバック", "http://localhost/admin", true},
+		{"プライベートIP (クラスA)", "http://10.255.255.254/metadata", true},
+		{"名前解決できないドメイン", "http://this.should.not.exist.invalid", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			safe, err := isSafeURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("isSafeURL() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && !safe {
+				t.Error("safe URL was flagged as unsafe")
+			}
+			if tt.wantErr && safe {
+				t.Error("unsafe URL was flagged as safe")
+			}
+		})
+	}
 }
 
 func TestGeminiImageCore_ParseToResponse(t *testing.T) {

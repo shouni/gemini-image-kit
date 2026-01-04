@@ -3,7 +3,10 @@ package generator
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -51,17 +54,20 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 			if data, ok := val.([]byte); ok {
 				return c.ToPart(data)
 			}
+			slog.WarnContext(ctx, "Invalid data type in image cache", "url", url, "type", fmt.Sprintf("%T", val))
 		}
 	}
 
-	// 2. SSRF対策（安全なURLかチェック）
-	if !isSafeURL(url) {
+	// 2. SSRF対策（名前解決レベルでの安全チェック）
+	if safe, err := isSafeURL(url); !safe {
+		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", url, "error", err)
 		return nil
 	}
 
 	// 3. ダウンロード
 	data, err := c.httpClient.FetchBytes(ctx, url)
 	if err != nil {
+		slog.ErrorContext(ctx, "画像ダウンロード失敗", "url", url, "error", err)
 		return nil
 	}
 
@@ -117,10 +123,32 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 }
 
 // isSafeURL は簡単な SSRF 防止チェックを行うのだ。
-func isSafeURL(urlStr string) bool {
-	if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
-		return false
+// isSafeURL は SSRF 対策として URL を検証するのだ。
+func isSafeURL(rawURL string) (bool, error) {
+	parsedURL, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return false, fmt.Errorf("URLパース失敗: %w", err)
 	}
-	// 実際の実装では net.LookupIP 等でプライベートIPを弾くロジックが入るのだ
-	return true
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return false, fmt.Errorf("不許可スキーム: %s", parsedURL.Scheme)
+	}
+
+	ips, err := net.LookupIP(parsedURL.Hostname())
+	if err != nil {
+		return false, fmt.Errorf("名前解決失敗: %w", err)
+	}
+
+	if len(ips) == 0 {
+		return false, fmt.Errorf("IPアドレスが見つかりません")
+	}
+
+	for _, ip := range ips {
+		// プライベート、ループバック、リンクローカル（Unicast/Multicast）をブロックするのだ
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return false, fmt.Errorf("制限されたネットワークへのアクセスを検知: %s", ip.String())
+		}
+	}
+
+	return true, nil
 }
