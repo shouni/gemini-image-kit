@@ -54,14 +54,14 @@ func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Dura
 	}, nil
 }
 
-// PrepareImagePart は URL から画像を準備し、Gemini 用の Part に変換するのだ。
-func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *genai.Part {
+// prepareImagePart は URL から画像を準備し、Gemini 用の Part に変換するのだ。
+func (c *GeminiImageCore) prepareImagePart(ctx context.Context, url string) *genai.Part {
 	// 1. キャッシュチェック（cache が設定されている場合のみ）
 	if c.cache != nil {
 		if val, ok := c.cache.Get(url); ok {
 			// キャッシュから取り出した値が []byte であることを確認するのだ
 			if data, ok := val.([]byte); ok {
-				return c.ToPart(data)
+				return c.toPart(data)
 			}
 			slog.WarnContext(ctx, "キャッシュに不正な型のデータが含まれています", "url", url)
 		}
@@ -85,11 +85,11 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 		c.cache.Set(url, data, c.expiration)
 	}
 
-	return c.ToPart(data)
+	return c.toPart(data)
 }
 
-// ToPart はバイナリデータを MIME タイプ付きの Part に変換するのだ。
-func (c *GeminiImageCore) ToPart(data []byte) *genai.Part {
+// toPart はバイナリデータを MIME タイプ付きの Part に変換するのだ。
+func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	mimeType := http.DetectContentType(data)
 	if !strings.HasPrefix(mimeType, "image/") {
 		slog.Warn("MIMEタイプが画像ではないためPartに変換できませんでした", "detected_mime_type", mimeType)
@@ -103,8 +103,8 @@ func (c *GeminiImageCore) ToPart(data []byte) *genai.Part {
 	}
 }
 
-// ParseToResponse は Gemini のレスポンスから画像データを抽出するのだ。
-func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
+// parseToResponse は Gemini のレスポンスから画像データを抽出するのだ。
+func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
 	if resp == nil || resp.RawResponse == nil {
 		return nil, fmt.Errorf("empty response from Gemini")
 	}
