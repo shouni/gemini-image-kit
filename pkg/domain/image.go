@@ -6,16 +6,16 @@ type ImageGenerationRequest struct {
 	Prompt         string
 	NegativePrompt string
 	AspectRatio    string
-	Seed           *int64
 	ReferenceURL   string
+	Seed           *int64
 }
 
 // ImagePageRequest は漫画1ページの一括生成要求です。
 type ImagePageRequest struct {
 	Prompt         string
 	NegativePrompt string
-	ReferenceURLs  []string
 	AspectRatio    string
+	ReferenceURLs  []string
 	Seed           *int64
 }
 
