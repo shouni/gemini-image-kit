@@ -1,4 +1,4 @@
-package adapters
+package generator
 
 import (
 	"context"
@@ -43,12 +43,10 @@ func (m *mockImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*Ima
 // ----------------------------------------------------------------------
 
 type mockAIClient struct {
-	// インターフェースを満たすためのメソッドを個別に定義するのだ
 	generateWithPartsFunc func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error)
 	generateContentFunc   func(ctx context.Context, model string, prompt string) (*gemini.Response, error)
 }
 
-// GenerateWithParts は ImageGenerator が主に使用するメソッドなのだ
 func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 	if m.generateWithPartsFunc != nil {
 		return m.generateWithPartsFunc(ctx, model, parts, opts)
@@ -56,7 +54,6 @@ func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, part
 	return nil, nil
 }
 
-// GenerateContent はインターフェースを満足させるために実装しておくのだ
 func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt string) (*gemini.Response, error) {
 	if m.generateContentFunc != nil {
 		return m.generateContentFunc(ctx, model, prompt)
@@ -64,5 +61,4 @@ func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt
 	return nil, nil
 }
 
-// Close 等、他のメソッドが必要な場合はここに追加していくのだ
 func (m *mockAIClient) Close() error { return nil }

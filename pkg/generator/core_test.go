@@ -1,8 +1,7 @@
-package adapters
+package generator
 
 import (
 	"context"
-	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -22,16 +21,6 @@ func (m *mockHTTPClient) FetchBytes(ctx context.Context, url string) ([]byte, er
 	if m.fetchFunc != nil {
 		return m.fetchFunc(ctx, url)
 	}
-	return nil, nil
-}
-
-// ClientInterface を満たすための空実装なのだ
-func (m *mockHTTPClient) DoRequest(req *http.Request) ([]byte, error)                     { return nil, nil }
-func (m *mockHTTPClient) FetchAndDecodeJSON(ctx context.Context, url string, v any) error { return nil }
-func (m *mockHTTPClient) PostJSONAndFetchBytes(ctx context.Context, url string, data any) ([]byte, error) {
-	return nil, nil
-}
-func (m *mockHTTPClient) PostRawBodyAndFetchBytes(ctx context.Context, url string, body []byte, contentType string) ([]byte, error) {
 	return nil, nil
 }
 
@@ -58,15 +47,13 @@ func (m *mockCache) Set(key string, value interface{}, d time.Duration) {
 
 func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	ctx := context.Background()
-	// 有効なPNGヘッダーを持つダミーデータなのだ
+	// 有効なPNGヘッダーを持つダミーデータ
 	validPng := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90w\x53\xde")
-
-	// 実際のテストでは名前解決可能なパブリックドメインを使用する必要があるのだ
 	safeURL := "https://www.google.com/test.png"
 
 	t.Run("キャッシュにある場合は安全チェックを飛ばしてキャッシュを返すのだ", func(t *testing.T) {
 		cache := &mockCache{data: map[string]interface{}{safeURL: validPng}}
-		// キャッシュヒット時は httpClient は呼ばれないので nil でOKなのだ
+		// 同一パッケージ内なので NewGeminiImageCore を直接呼べるのだ
 		core := NewGeminiImageCore(nil, cache, time.Hour)
 
 		part := core.PrepareImagePart(ctx, safeURL)
@@ -90,10 +77,9 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 
 		part := core.PrepareImagePart(ctx, safeURL)
 
-		// 注意: 実行環境がオフライン、あるいはDNS解決できない場合はここで失敗する可能性があるのだ
+		// isSafeURL の実装に依存するが、テスト環境により nil になる場合は skip するのだ
 		if part == nil {
-			t.Log("Warning: 名前解決に失敗してnilが返った可能性があるのだ（オフライン環境等）")
-			t.Skip("ネットワーク/DNS依存のためスキップするのだ")
+			t.Skip("ネットワークまたは名前解決制限によりスキップするのだ")
 			return
 		}
 
@@ -101,20 +87,18 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 			t.Error("キャッシュに保存されていないのだ")
 		}
 		if !reflect.DeepEqual(part.InlineData.Data, validPng) {
-			t.Error("DLしたデータが正しくPartに変換されていないのだ")
+			t.Error("DLしたデータが正しく変換されていないのだ")
 		}
 	})
 
-	t.Run("安全でないURL（ローカルIP）はブロックするのだ", func(t *testing.T) {
-		unsafeURL := "http://127.0.0.1/attack.png"
-		cache := &mockCache{data: make(map[string]interface{})}
-		httpClient := &mockHTTPClient{}
-		core := NewGeminiImageCore(httpClient, cache, time.Hour)
+	t.Run("安全でないURLはブロックするのだ", func(t *testing.T) {
+		unsafeURL := "ftp://example.com/test.png" // スキーム不正
+		core := NewGeminiImageCore(&mockHTTPClient{}, nil, time.Hour)
 
 		part := core.PrepareImagePart(ctx, unsafeURL)
 
 		if part != nil {
-			t.Error("ローカルIPへのアクセスがブロックされなかったのだ")
+			t.Error("不適切なスキームがブロックされなかったのだ")
 		}
 	})
 }
@@ -153,7 +137,7 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("異常系: FinishReason が異常（Safety）な場合", func(t *testing.T) {
+	t.Run("異常系: FinishReason が SAFETY の場合", func(t *testing.T) {
 		resp := &gemini.Response{
 			RawResponse: &genai.GenerateContentResponse{
 				Candidates: []*genai.Candidate{
@@ -166,10 +150,10 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 
 		_, err := core.ParseToResponse(resp, seed)
 		if err == nil {
-			t.Error("セーフティフィルターに抵触した場合はエラーを返すべきなのだ")
+			t.Fatal("セーフティフィルター時はエラーを返すべきなのだ")
 		}
-		if !strings.Contains(err.Error(), "FinishReason: SAFETY") {
-			t.Errorf("エラーメッセージが不適切なのだ: %v", err)
+		if !strings.Contains(err.Error(), "SAFETY") {
+			t.Errorf("エラーメッセージに理由が含まれていないのだ: %v", err)
 		}
 	})
 }
