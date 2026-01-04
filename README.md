@@ -16,11 +16,11 @@
 
 ## ✨ 主な特徴 (Features)
 
-* **🖼️ Multi-Modal Orchestration**: テキストと複数の参照画像（URL）を組み合わせた高度なプロンプト構築を数行で実現。単一パネル生成に加え、複数画像を参照する一括ページ生成にも対応。
-* **🛡️ SSRF Protected**: ユーザー指定のURLから画像を生成する際、内部ネットワークへの攻撃（SSRF）を防ぐため、名前解決レベルでのIP制限バリデーションを標準装備。
-* **⚡️ Built-in Image Caching**: 同一URLの参照画像を何度もダウンロードしないためのキャッシュ機構（`ImageCacher`）を搭載。
-* **🧬 Seed Consistency**: Gemini SDK 特有の `*int32` Seed値を扱いやすくカプセル化し、生成結果の再現性をサポート。
-* **ログ・デバッグ支援**: 生成プロセスの詳細（パーツ構成、ブロック理由等）を `slog` で可視化。
+* **🖼️ Unified Generator**: 統合された `GeminiGenerator` により、単一パネル生成（`ImageGenerator`）と複数参照ページ生成（`MangaPageGenerator`）の両方を一つのインスタンスで提供。
+* **🛡️ SSRF Protected**: 外部URLから画像を読み込む際、内部ネットワークへの攻撃を防ぐバリデーションを標準装備。
+* **⚡️ Built-in Image Caching**: 同一URLの参照画像を再利用する `ImageCacher` インターフェースにより、APIのレイテンシと通信量を削減。
+* **🧬 Seed Consistency**: `*int64` (Domain) と `*int32` (Gemini SDK) の型変換をカプセル化し、一貫したシード値管理を実現。
+* **🪵 slog Integration**: 生成プロセス（パーツ構成、ブロック理由等）を構造化ログで可視化。
 
 ---
 
@@ -38,11 +38,11 @@
 ```text
 pkg/
 ├── domain/            # 共通ドメインモデル（Request/Response 等）
-└── adapters/          # 具体的な実装（アダプター層）
-    ├── core.go        # 画像DL、キャッシュ、パース、SSRF対策の基盤 (GeminiImageCore)
-    ├── generator.go   # 単一パネル・画像生成 (GeminiImageGenerator)
-    ├── page_gen.go    # 複数画像を含むページ一括生成 (GeminiMangaPageGenerator)
-    └── util.go        # シード値変換等のユーティリティ
+└── generator/         # 統合パッケージ（旧 adapters）
+    ├── interfaces.go  # ImageGenerator / MangaPageGenerator インターフェース定義
+    ├── gemini.go      # 統合生成器 GeminiGenerator の実装
+    ├── core.go        # 画像DL、キャッシュ、パース基盤 (GeminiImageCore)
+    └── util.go        # 型変換ユーティリティ
 
 ```
 
@@ -50,56 +50,50 @@ pkg/
 
 ## 🛠️ クイックスタート (Usage)
 
-### 1. コアロジックとジェネレーターの初期化
+### 1. ジェネレーターの初期化
+
+`NewGeminiGenerator` は依存関係の `nil` チェックを行うため、安全に初期化できるのだ。
 
 ```go
 import (
-    "github.com/shouni/gemini-image-kit/pkg/adapters"
+    "github.com/shouni/gemini-image-kit/pkg/generator"
     "github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 )
 
-// 1. 画像処理・キャッシュ・セキュリティを担当する Core の準備
-core := adapters.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
+// 1. 基盤となる Core の準備
+core := generator.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
 
-// 2. 単一パネル生成用ジェネレーターの生成
-generator := adapters.NewGeminiImageGenerator(
-    core,
-    apiClient,
-    "imagen-3.0-generate-001",
-)
-
-```
-
-### 2. 単一パネルの生成
-
-```go
-req := domain.ImageGenerationRequest{
-    Prompt:       "ずんだもんが森で餅を食べている",
-    AspectRatio:  "16:9",
-    ReferenceURL: "https://example.com/character_sheet.png",
-    Seed:         ptrInt64(12345),
+// 2. 統合ジェネレーターの生成（エラーチェック付きなのだ！）
+gen, err := generator.NewGeminiGenerator(core, apiClient, "imagen-3.0-generate-001")
+if err != nil {
+    log.Fatal(err)
 }
 
-resp, err := generator.GenerateMangaPanel(ctx, req)
-// resp.Data に画像バイナリが含まれるのだ！
-
 ```
 
-### 3. 複数画像を参照した一括ページ生成
+### 2. 画像の生成（パネル or ページ）
+
+一つのインスタンスで両方のインターフェースを使い分けられるのだ。
 
 ```go
-pageGen := adapters.NewGeminiMangaPageGenerator(core, apiClient, "imagen-3.0")
+// --- 単一パネルの生成 ---
+panelReq := domain.ImageGenerationRequest{
+    Prompt:       "ずんだもんが森で餅を食べている",
+    AspectRatio:  "16:9",
+    ReferenceURL: "https://example.com/character.png",
+}
+panelResp, err := gen.GenerateMangaPanel(ctx, panelReq)
 
-req := domain.ImagePageRequest{
-    Prompt: "二人のキャラクターが対峙している緊迫したシーン",
+// --- 複数画像を参照したページ一括生成 ---
+pageReq := domain.ImagePageRequest{
+    Prompt: "二人のキャラクターが対峙しているシーン",
     ReferenceURLs: []string{
         "https://example.com/hero.png",
         "https://example.com/villain.png",
     },
     AspectRatio: "3:4",
 }
-
-resp, err := pageGen.GenerateMangaPage(ctx, req)
+pageResp, err := gen.GenerateMangaPage(ctx, pageReq)
 
 ```
 
