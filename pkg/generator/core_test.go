@@ -24,11 +24,12 @@ func (m *mockHTTPClient) FetchBytes(ctx context.Context, url string) ([]byte, er
 	return nil, nil
 }
 
+// mockCache は ImageCacher インターフェースを []byte 型で実装するのだ。
 type mockCache struct {
-	data map[string]interface{}
+	data map[string][]byte
 }
 
-func (m *mockCache) Get(key string) (interface{}, bool) {
+func (m *mockCache) Get(key string) ([]byte, bool) {
 	if m.data == nil {
 		return nil, false
 	}
@@ -36,9 +37,9 @@ func (m *mockCache) Get(key string) (interface{}, bool) {
 	return v, ok
 }
 
-func (m *mockCache) Set(key string, value interface{}, d time.Duration) {
+func (m *mockCache) Set(key string, value []byte, d time.Duration) {
 	if m.data == nil {
-		m.data = make(map[string]interface{})
+		m.data = make(map[string][]byte)
 	}
 	m.data[key] = value
 }
@@ -52,7 +53,7 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	safeURL := "https://www.google.com/test.png"
 
 	t.Run("キャッシュにある場合は安全チェックを飛ばしてキャッシュを返すのだ", func(t *testing.T) {
-		cache := &mockCache{data: map[string]interface{}{safeURL: validPng}}
+		cache := &mockCache{data: map[string][]byte{safeURL: validPng}}
 		core := NewGeminiImageCore(nil, cache, time.Hour)
 
 		part := core.PrepareImagePart(ctx, safeURL)
@@ -66,7 +67,7 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	})
 
 	t.Run("キャッシュにない場合はバリデーション後にDLして保存するのだ", func(t *testing.T) {
-		cache := &mockCache{data: make(map[string]interface{})}
+		cache := &mockCache{data: make(map[string][]byte)}
 		httpClient := &mockHTTPClient{
 			fetchFunc: func(ctx context.Context, url string) ([]byte, error) {
 				return validPng, nil
@@ -76,7 +77,7 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 
 		part := core.PrepareImagePart(ctx, safeURL)
 
-		// ネットワーク環境等でパブリックURLの名前解決に失敗する場合はSkipするのだ
+		// ネットワーク環境等で名前解決に失敗する場合はSkipするのだ
 		if part == nil {
 			t.Skip("外部ネットワークへの名前解決制限によりテストをスキップするのだ")
 			return
