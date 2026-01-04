@@ -28,8 +28,8 @@ type HTTPClient interface {
 
 // ImageCacher は画像のキャッシュを担当するインターフェースなのだ。
 type ImageCacher interface {
-	Get(key string) (any, bool)
-	Set(key string, value any, d time.Duration)
+	Get(key string) ([]byte, bool)
+	Set(key string, value []byte, d time.Duration)
 }
 
 type GeminiImageCore struct {
@@ -51,7 +51,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 	// 1. キャッシュチェック
 	if c.cache != nil {
 		if val, ok := c.cache.Get(url); ok {
-			if data, ok := val.([]byte); ok {
+			if data, ok := c.cache.Get(url); ok {
 				return c.ToPart(data)
 			}
 			slog.WarnContext(ctx, "Invalid data type in image cache", "url", url, "type", fmt.Sprintf("%T", val))
