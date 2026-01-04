@@ -27,11 +27,13 @@ type HTTPClient interface {
 }
 
 // ImageCacher は画像のキャッシュを担当するインターフェースなのだ。
+// 汎用性を保つため、値の型には any (interface{}) を使用するのだ。
 type ImageCacher interface {
-	Get(key string) ([]byte, bool)
-	Set(key string, value []byte, d time.Duration)
+	Get(key string) (any, bool)
+	Set(key string, value any, d time.Duration)
 }
 
+// GeminiImageCore は画像生成の基盤となるロジックを管理するのだ。
 type GeminiImageCore struct {
 	httpClient HTTPClient
 	cache      ImageCacher
@@ -39,22 +41,29 @@ type GeminiImageCore struct {
 }
 
 // NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返すのだ。
-// HTTPClient は画像の取得、ImageCacher は画像のキャッシュに使用され、cacheTTL はキャッシュの有効期間を定義するのだよ。
-func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Duration) *GeminiImageCore {
+// HTTPClient は必須なのだ。ImageCacher は nil でも動作する（キャッシュしないだけ）設計なのだよ。
+func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+	if client == nil {
+		return nil, fmt.Errorf("httpClient (generator.HTTPClient) は必須なのだ")
+	}
+
 	return &GeminiImageCore{
 		httpClient: client,
 		cache:      cache,
 		expiration: cacheTTL,
-	}
+	}, nil
 }
 
 // PrepareImagePart は URL から画像を準備し、Gemini 用の Part に変換するのだ。
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *genai.Part {
-	// 1. キャッシュチェック
+	// 1. キャッシュチェック（cache が設定されている場合のみ）
 	if c.cache != nil {
-		if data, ok := c.cache.Get(url); ok {
-			slog.DebugContext(ctx, "Image cache hit", "url", url)
-			return c.ToPart(data)
+		if val, ok := c.cache.Get(url); ok {
+			// キャッシュから取り出した値が []byte であることを確認するのだ
+			if data, ok := val.([]byte); ok {
+				return c.ToPart(data)
+			}
+			slog.WarnContext(ctx, "キャッシュに不正な型のデータが含まれています", "url", url)
 		}
 	}
 
@@ -71,7 +80,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *gen
 		return nil
 	}
 
-	// 4. キャッシュ保存
+	// 4. キャッシュ保存（cache が設定されている場合のみ）
 	if c.cache != nil {
 		c.cache.Set(url, data, c.expiration)
 	}
@@ -106,8 +115,13 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	candidate := raw.Candidates[0]
+	// FinishReasonStop または Unspecified 以外はエラーとして扱うのだ
 	if candidate.FinishReason != genai.FinishReasonStop && candidate.FinishReason != genai.FinishReasonUnspecified {
 		return nil, fmt.Errorf("generation failed with FinishReason: %s", candidate.FinishReason)
+	}
+
+	if candidate.Content == nil {
+		return nil, fmt.Errorf("no content found in candidate")
 	}
 
 	for _, part := range candidate.Content.Parts {
@@ -144,7 +158,7 @@ func isSafeURL(rawURL string) (bool, error) {
 	}
 
 	for _, ip := range ips {
-		// プライベート、ループバック、リンクローカル（Unicast/Multicast）をブロックするのだ
+		// プライベート、ループバック、リンクローカルをブロックして安全を確保するのだ
 		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 			return false, fmt.Errorf("制限されたネットワークへのアクセスを検知: %s", ip.String())
 		}
