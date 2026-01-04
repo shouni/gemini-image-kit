@@ -7,10 +7,13 @@ import (
 	"google.golang.org/genai"
 )
 
-// mockImageCore は ImageGeneratorCore インターフェースのテスト用モックなのだ。
+// ----------------------------------------------------------------------
+// mockImageCore: ImageGeneratorCore のモック
+// ----------------------------------------------------------------------
+
 type mockImageCore struct {
-	// 引数に ctx を追加してインターフェースと一致させるのが安全なのだ
 	prepareFunc func(ctx context.Context, url string) *genai.Part
+	toPartFunc  func(data []byte) *genai.Part
 	parseFunc   func(resp *gemini.Response, seed int64) (*ImageOutput, error)
 }
 
@@ -21,8 +24,12 @@ func (m *mockImageCore) PrepareImagePart(ctx context.Context, url string) *genai
 	return nil
 }
 
-// 必要に応じて実装を追加できるよう nil 以外を返さない形にしておくのだ
-func (m *mockImageCore) ToPart(data []byte) *genai.Part { return nil }
+func (m *mockImageCore) ToPart(data []byte) *genai.Part {
+	if m.toPartFunc != nil {
+		return m.toPartFunc(data)
+	}
+	return nil
+}
 
 func (m *mockImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
 	if m.parseFunc != nil {
@@ -31,21 +38,31 @@ func (m *mockImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*Ima
 	return nil, nil
 }
 
-// mockAIClient は gemini.GenerativeModel のテスト用モックなのだ。
+// ----------------------------------------------------------------------
+// mockAIClient: gemini.GenerativeModel のモック
+// ----------------------------------------------------------------------
+
 type mockAIClient struct {
-	// 他のメソッド（GenerateContent等）を埋め込みで解決するために interface を持たせると便利なのだ
-	gemini.GenerativeModel
-	generateFunc func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error)
+	// インターフェースを満たすためのメソッドを個別に定義するのだ
+	generateWithPartsFunc func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error)
+	generateContentFunc   func(ctx context.Context, model string, prompt string) (*gemini.Response, error)
 }
 
+// GenerateWithParts は ImageGenerator が主に使用するメソッドなのだ
 func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-	if m.generateFunc != nil {
-		return m.generateFunc(model, parts, opts)
+	if m.generateWithPartsFunc != nil {
+		return m.generateWithPartsFunc(ctx, model, parts, opts)
 	}
 	return nil, nil
 }
 
-// インターフェースを満たすために空の実装を置いておくのだ
+// GenerateContent はインターフェースを満足させるために実装しておくのだ
 func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt string) (*gemini.Response, error) {
+	if m.generateContentFunc != nil {
+		return m.generateContentFunc(ctx, model, prompt)
+	}
 	return nil, nil
 }
+
+// Close 等、他のメソッドが必要な場合はここに追加していくのだ
+func (m *mockAIClient) Close() error { return nil }

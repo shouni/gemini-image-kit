@@ -11,10 +11,9 @@ import (
 	"google.golang.org/genai"
 )
 
-func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
+func TestGeminiImageGenerator_GenerateMangaPanel(t *testing.T) {
 	ctx := context.Background()
 	modelName := "imagen-3.0"
-	style := "anime style, high quality"
 
 	t.Run("Success/ShouldPassPromptAndOptionsToAIClientCorrectly", func(t *testing.T) {
 		var seedValue int64 = 1234
@@ -25,12 +24,12 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 		}
 
 		ai := &mockAIClient{
-			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-				// プロンプト結合のチェック
-				if !strings.Contains(parts[0].Text, req.Prompt) || !strings.Contains(parts[0].Text, style) {
-					t.Errorf("prompt is not correctly combined: got %s", parts[0].Text)
+			generateWithPartsFunc: func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+				// プロンプトのチェック
+				if parts[0].Text != req.Prompt {
+					t.Errorf("prompt mismatch: got %s, want %s", parts[0].Text, req.Prompt)
 				}
-				// SDKに渡る際は *int32 に変換されているかチェックするのだ
+				// SDKに渡る際は *int32 に変換されているかチェック
 				if opts.Seed == nil || *opts.Seed != int32(seedValue) {
 					t.Errorf("seed was not correctly converted to int32: got %v", opts.Seed)
 				}
@@ -45,7 +44,12 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 			},
 		}
 
-		adapter, _ := NewGeminiImageGenerator(core, ai, modelName, style)
+		// コンストラクタの引数は core, ai, model の3つ
+		adapter, err := NewGeminiImageGenerator(core, ai, modelName)
+		if err != nil {
+			t.Fatalf("failed to create adapter: %v", err)
+		}
+
 		resp, err := adapter.GenerateMangaPanel(ctx, req)
 
 		if err != nil {
@@ -64,13 +68,13 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 		expectedErr := errors.New("AI client error")
 
 		ai := &mockAIClient{
-			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+			generateWithPartsFunc: func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 				return nil, expectedErr
 			},
 		}
 		core := &mockImageCore{}
 
-		adapter, _ := NewGeminiImageGenerator(core, ai, modelName, style)
+		adapter, _ := NewGeminiImageGenerator(core, ai, modelName)
 		_, err := adapter.GenerateMangaPanel(ctx, req)
 
 		if err == nil || !strings.Contains(err.Error(), expectedErr.Error()) {
@@ -83,7 +87,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 		expectedErr := errors.New("parse error")
 
 		ai := &mockAIClient{
-			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+			generateWithPartsFunc: func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
 		}
@@ -93,7 +97,7 @@ func TestGeminiImageAdapter_GenerateMangaPanel(t *testing.T) {
 			},
 		}
 
-		adapter, _ := NewGeminiImageGenerator(core, ai, modelName, style)
+		adapter, _ := NewGeminiImageGenerator(core, ai, modelName)
 		_, err := adapter.GenerateMangaPanel(ctx, req)
 
 		if !errors.Is(err, expectedErr) {

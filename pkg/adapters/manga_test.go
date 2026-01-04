@@ -11,15 +11,11 @@ import (
 	"google.golang.org/genai"
 )
 
-// 注: mockImageCore と mockAIClient は gemini_adapter_test.go と同じファイル、
-// あるいは共通の test_util.go 等に定義されている前提なのだ。
-
-func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
+func TestGeminiMangaPageGenerator_GenerateMangaPage(t *testing.T) {
 	ctx := context.Background()
 	modelName := "imagen-3.0"
 
 	t.Run("Success/ShouldAddMultipleImageURLsToParts", func(t *testing.T) {
-		// Seed を *int64 で定義
 		var seedValue int64 = 999
 		req := domain.ImagePageRequest{
 			Prompt: "A luxurious manga page",
@@ -33,7 +29,6 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 
 		prepareCallCount := 0
 		core := &mockImageCore{
-			// 引数に context.Context を追加
 			prepareFunc: func(ctx context.Context, url string) *genai.Part {
 				prepareCallCount++
 				return &genai.Part{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("img")}}
@@ -44,7 +39,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		ai := &mockAIClient{
-			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+			generateWithPartsFunc: func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 				// テキスト(1) + 画像(2) = 3パーツ
 				if len(parts) != 3 {
 					t.Errorf("unexpected number of parts: want 3, got %d", len(parts))
@@ -79,7 +74,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		expectedErr := errors.New("AI client network error")
 
 		ai := &mockAIClient{
-			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+			generateWithPartsFunc: func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 				return nil, expectedErr
 			},
 		}
@@ -91,7 +86,6 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error but got nil")
 		}
-		// ラップされている可能性を考慮してメッセージを含んでいるかチェック
 		if !strings.Contains(err.Error(), expectedErr.Error()) {
 			t.Errorf("expected error containing '%v', but got '%v'", expectedErr, err)
 		}
@@ -107,7 +101,6 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		core := &mockImageCore{
-			// 引数に context.Context を追加
 			prepareFunc: func(ctx context.Context, url string) *genai.Part {
 				if url == "http://fail.com/bad.png" {
 					return nil
@@ -120,7 +113,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		ai := &mockAIClient{
-			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+			generateWithPartsFunc: func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 				// 失敗した1枚を除いて、テキスト(1) + 成功画像(1) = 2パーツ
 				if len(parts) != 2 {
 					t.Errorf("unexpected number of parts: want 2, got %d", len(parts))
@@ -158,7 +151,7 @@ func TestGeminiMangaPageAdapter_GenerateMangaPage(t *testing.T) {
 		}
 
 		ai := &mockAIClient{
-			generateFunc: func(model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
+			generateWithPartsFunc: func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
 				return &gemini.Response{RawResponse: &genai.GenerateContentResponse{}}, nil
 			},
 		}
