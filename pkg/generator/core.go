@@ -38,11 +38,13 @@ type GeminiImageCore struct {
 	expiration time.Duration
 }
 
-func NewGeminiImageCore(client HTTPClient, cache ImageCacher, exp time.Duration) *GeminiImageCore {
+// NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返すのだ。
+// HTTPClient は画像の取得、ImageCacher は画像のキャッシュに使用され、cacheTTL はキャッシュの有効期間を定義するのだよ。
+func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Duration) *GeminiImageCore {
 	return &GeminiImageCore{
 		httpClient: client,
 		cache:      cache,
-		expiration: exp,
+		expiration: cacheTTL,
 	}
 }
 
@@ -50,11 +52,9 @@ func NewGeminiImageCore(client HTTPClient, cache ImageCacher, exp time.Duration)
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, url string) *genai.Part {
 	// 1. キャッシュチェック
 	if c.cache != nil {
-		if val, ok := c.cache.Get(url); ok {
-			if data, ok := c.cache.Get(url); ok {
-				return c.ToPart(data)
-			}
-			slog.WarnContext(ctx, "Invalid data type in image cache", "url", url, "type", fmt.Sprintf("%T", val))
+		if data, ok := c.cache.Get(url); ok {
+			slog.DebugContext(ctx, "Image cache hit", "url", url)
+			return c.ToPart(data)
 		}
 	}
 
@@ -136,7 +136,7 @@ func isSafeURL(rawURL string) (bool, error) {
 
 	ips, err := net.LookupIP(parsedURL.Hostname())
 	if err != nil {
-		return false, fmt.Errorf("名前解決失敗: %w", err)
+		return false, fmt.Errorf("ホスト '%s' の名前解決に失敗しました: %w", parsedURL.Hostname(), err)
 	}
 
 	if len(ips) == 0 {

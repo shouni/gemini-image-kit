@@ -10,7 +10,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// GeminiGenerator は単一パネルと一括ページ生成の両方を担当する統合生成器なのだ！
+// GeminiGenerator は、単一パネル生成(GenerateMangaPanel)と
+// 複数画像ページ生成(GenerateMangaPage)の両方を担当する統合ジェネレーターです。
 type GeminiGenerator struct {
 	imgCore  ImageGeneratorCore
 	aiClient gemini.GenerativeModel
