@@ -10,26 +10,26 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットなのだ。
 
-単なる API ラッパーではなく、「**参照画像の自動ダウンロード・キャッシュ**」「**マルチモーダルなパーツ組み立て**」「**SDK互換のシード値管理**」といった、実践的なアプリケーション開発で必ず直面する「共通の課題」を解決するために設計されているのだ。
+単なる API ラッパーではなく、「**参照画像の自動ダウンロード・キャッシュ**」「**SSRFプロテクション**」「**マルチモーダルなパーツ組み立て**」「**SDK互換のシード値管理**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されているのだ。
 
 ---
 
 ## ✨ 主な特徴 (Features)
 
-* **🖼️ Multi-Modal Orchestration**: テキストと複数の参照画像（URL）を組み合わせた高度なプロンプト構築を数行で実現。
-* **⚡️ Built-in Image Caching**: 同一URLの参照画像を何度もダウンロードしないためのキャッシュ機構（`ImageCacher`）を標準搭載。
-* **🛠️ Domain-Driven Design**: `domain` パッケージに型を定義し、ビジネスロジックが Gemini SDK の内部仕様に依存しすぎないクリーンな設計。
-* **🧬 Seed Consistency**: Gemini SDK 特有の `*int32` Seed値を扱いやすくカプセル化し、生成結果の再現性をサポート。
-* **ログ・デバッグ支援**: 生成プロセスの詳細（パーツ構成、ブロック理由等）を `slog` で可視化。
+* **🖼️ Unified Generator**: 統合された `GeminiGenerator` により、単一パネル生成（`ImageGenerator`）と複数参照ページ生成（`MangaPageGenerator`）の両方を一つのインスタンスで提供。
+* **🛡️ SSRF Protected**: 外部URLから画像を読み込む際、内部ネットワークへの攻撃を防ぐバリデーションを標準装備。
+* **⚡️ Built-in Image Caching**: 同一URLの参照画像を再利用する `ImageCacher` インターフェースにより、APIのレイテンシと通信量を削減。
+* **🧬 Seed Consistency**: `*int64` (Domain) と `*int32` (Gemini SDK) の型変換をカプセル化し、一貫したシード値管理を実現。
+* **🪵 slog Integration**: 生成プロセス（パーツ構成、ブロック理由等）を構造化ログで可視化。
 
 ---
 
 ## 🛡️ セキュリティ (Security)
 
-本ライブラリは、ユーザー指定のURL（`ReferenceURLs`）をサーバーサイドで取得する際の **SSRF (Server-Side Request Forgery)** 攻撃を防ぐため、以下の安全策を講じています。
+本ライブラリは、サーバーサイドで外部URLを取得する際の **SSRF (Server-Side Request Forgery)** 攻撃を防ぐため、以下の安全策を講じています。
 
-* **IP制限**: `localhost`、プライベートIPアドレス（例: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`）、リンクローカルアドレスといった、内部ネットワークや特殊用途のIPアドレスへのリクエストを名前解決レベルでブロックします。
-* **プロトコル制限**: `http` および `https` 以外のスキームを拒否。
+* **IP制限**: `localhost`、プライベートIP、リンクローカルアドレスといった、内部ネットワークへのリクエストを名前解決後のIPレベルでブロック。
+* **プロトコル制限**: `http` および `https` 以外の不許可スキームを拒否。
 
 ---
 
@@ -37,12 +37,12 @@
 
 ```text
 pkg/
-├── domain/            # 共通ドメインモデル（Request/Response, Character定義など）
-│   └── image.go       # 漫画・画像生成に関するデータ構造
-└── adapters/          # 具体的な実装（アダプター層）
-    ├── core.go        # 画像DL、キャッシュ、パースの共通基盤 (GeminiImageCore)
-    ├── image.go       # 単体パネル・画像生成 (GeminiImageAdapter)
-    └── manga.go       # 複数画像を含むページ一括生成 (GeminiMangaPageAdapter)
+├── domain/            # 共通ドメインモデル（Request/Response 等）
+└── generator/         # 統合パッケージ（旧 adapters）
+    ├── interfaces.go  # ImageGenerator / MangaPageGenerator インターフェース定義
+    ├── gemini.go      # 統合生成器 GeminiGenerator の実装
+    ├── core.go        # 画像DL、キャッシュ、パース基盤 (GeminiImageCore)
+    └── util.go        # 型変換ユーティリティ
 
 ```
 
@@ -50,42 +50,50 @@ pkg/
 
 ## 🛠️ クイックスタート (Usage)
 
-### 1. Adapter の初期化
+### 1. ジェネレーターの初期化
+
+`NewGeminiGenerator` は依存関係の `nil` チェックを行うため、安全に初期化できるのだ。
 
 ```go
 import (
-    "github.com/shouni/gemini-image-kit/pkg/adapters"
+    "github.com/shouni/gemini-image-kit/pkg/generator"
     "github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 )
 
-// コアロジックの準備
-core := adapters.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
+// 1. 基盤となる Core の準備
+core := generator.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
 
-// アダプターの生成
-adapter := adapters.NewGeminiImageAdapter(
-    core,
-    apiClient,
-    "imagen-3.0-generate-001",
-    "anime style, high quality, manga illustration",
-)
-
-```
-
-### 2. 画像の生成
-
-```go
-req := domain.ImageGenerationRequest{
-    Prompt:       "ずんだもんが森で餅を食べている",
-    AspectRatio:  "16:9",
-    ReferenceURL: "https://example.com/zundamon.png",
-}
-
-resp, err := adapter.GenerateMangaPanel(ctx, req)
+// 2. 統合ジェネレーターの生成（エラーチェック付きなのだ！）
+gen, err := generator.NewGeminiGenerator(core, apiClient, "imagen-3.0-generate-001")
 if err != nil {
     log.Fatal(err)
 }
 
-// resp.Data に画像バイナリが含まれるのだ！
+```
+
+### 2. 画像の生成（パネル or ページ）
+
+一つのインスタンスで両方のインターフェースを使い分けられるのだ。
+
+```go
+// --- 単一パネルの生成 ---
+panelReq := domain.ImageGenerationRequest{
+    Prompt:       "ずんだもんが森で餅を食べている",
+    AspectRatio:  "16:9",
+    ReferenceURL: "https://example.com/character.png",
+}
+panelResp, err := gen.GenerateMangaPanel(ctx, panelReq)
+
+// --- 複数画像を参照したページ一括生成 ---
+pageReq := domain.ImagePageRequest{
+    Prompt: "二人のキャラクターが対峙しているシーン",
+    ReferenceURLs: []string{
+        "https://example.com/hero.png",
+        "https://example.com/villain.png",
+    },
+    AspectRatio: "3:4",
+}
+pageResp, err := gen.GenerateMangaPage(ctx, pageReq)
 
 ```
 
@@ -102,5 +110,3 @@ if err != nil {
 ### 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
-
-
