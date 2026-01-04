@@ -61,7 +61,10 @@ import (
 )
 
 // 1. 基盤となる Core の準備
-core := generator.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
+core, err := generator.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
+if err != nil {
+    log.Fatal(err)
+}
 
 // 2. 統合ジェネレーターの生成（エラーチェック付きなのだ！）
 gen, err := generator.NewGeminiGenerator(core, apiClient, "imagen-3.0-generate-001")
