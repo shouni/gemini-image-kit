@@ -122,7 +122,6 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	return nil, fmt.Errorf("no image data found in response parts")
 }
 
-// isSafeURL は簡単な SSRF 防止チェックを行うのだ。
 // isSafeURL は SSRF 対策として URL を検証するのだ。
 func isSafeURL(rawURL string) (bool, error) {
 	parsedURL, err := url.ParseRequestURI(rawURL)
