@@ -74,13 +74,13 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 
 	t.Run("キャッシュにある場合は安全チェックを飛ばしてキャッシュを返すのだ", func(t *testing.T) {
 		cache := &mockCache{data: map[string]any{safeURL: validPng}}
-		// 修正ポイント: NewGeminiImageCore の戻り値をチェック
 		core, err := NewGeminiImageCore(&mockHTTPClient{}, cache, time.Hour)
 		if err != nil {
 			t.Fatalf("初期化エラー: %v", err)
 		}
 
-		part := core.PrepareImagePart(ctx, safeURL)
+		// 修正ポイント: prepareImagePart (小文字) を呼ぶのだ
+		part := core.prepareImagePart(ctx, safeURL)
 
 		if part == nil || part.InlineData == nil {
 			t.Fatal("キャッシュから画像が取得できなかったのだ")
@@ -102,7 +102,8 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 			t.Fatalf("初期化エラー: %v", err)
 		}
 
-		part := core.PrepareImagePart(ctx, safeURL)
+		// 修正ポイント: prepareImagePart (小文字) を呼ぶのだ
+		part := core.prepareImagePart(ctx, safeURL)
 
 		if part == nil {
 			t.Skip("外部ネットワーク制限等によりスキップするのだ")
@@ -131,7 +132,8 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				part := core.PrepareImagePart(ctx, tc.url)
+				// 修正ポイント: prepareImagePart (小文字) を呼ぶのだ
+				part := core.prepareImagePart(ctx, tc.url)
 				if part != nil {
 					t.Errorf("%s がブロックされなかったのだ", tc.name)
 				}
@@ -194,7 +196,8 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 			},
 		}
 
-		out, err := core.ParseToResponse(resp, seed)
+		// 修正ポイント: parseToResponse (小文字) を呼ぶのだ
+		out, err := core.parseToResponse(resp, seed)
 		if err != nil {
 			t.Fatalf("パース中にエラーが発生したのだ: %v", err)
 		}
@@ -214,7 +217,8 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 			},
 		}
 
-		_, err := core.ParseToResponse(resp, seed)
+		// 修正ポイント: parseToResponse (小文字) を呼ぶのだ
+		_, err := core.parseToResponse(resp, seed)
 		if err == nil {
 			t.Fatal("セーフティフィルター時はエラーを返すべきなのだ")
 		}

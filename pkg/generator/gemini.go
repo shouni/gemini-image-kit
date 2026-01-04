@@ -50,7 +50,7 @@ func (g *GeminiGenerator) generateInternal(ctx context.Context, parts []*genai.P
 		return nil, err // ラップは呼び出し元で行うのだ
 	}
 
-	out, err := g.imgCore.ParseToResponse(resp, dereferenceSeed(seed))
+	out, err := g.imgCore.parseToResponse(resp, dereferenceSeed(seed))
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 	parts := []*genai.Part{{Text: req.Prompt}}
 
 	if req.ReferenceURL != "" {
-		if imgPart := g.imgCore.PrepareImagePart(ctx, req.ReferenceURL); imgPart != nil {
+		if imgPart := g.imgCore.prepareImagePart(ctx, req.ReferenceURL); imgPart != nil {
 			parts = append(parts, imgPart)
 		}
 	}
@@ -88,7 +88,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 		if url == "" {
 			continue
 		}
-		if imgPart := g.imgCore.PrepareImagePart(ctx, url); imgPart != nil {
+		if imgPart := g.imgCore.prepareImagePart(ctx, url); imgPart != nil {
 			parts = append(parts, imgPart)
 		}
 	}

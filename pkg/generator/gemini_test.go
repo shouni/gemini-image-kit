@@ -11,6 +11,27 @@ import (
 	"google.golang.org/genai"
 )
 
+func (m *mockImageCore) prepareImagePart(ctx context.Context, url string) *genai.Part {
+	if m.prepareFunc != nil {
+		return m.prepareFunc(ctx, url)
+	}
+	return nil
+}
+
+func (m *mockImageCore) toPart(data []byte) *genai.Part {
+	if m.toPartFunc != nil {
+		return m.toPartFunc(data)
+	}
+	return nil
+}
+
+func (m *mockImageCore) parseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
+	if m.parseFunc != nil {
+		return m.parseFunc(resp, seed)
+	}
+	return nil, nil
+}
+
 // --- Tests ---
 
 func TestGeminiGenerator_GenerateMangaPanel(t *testing.T) {
