@@ -10,15 +10,15 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットなのだ。
 
-単なる API ラッパーではなく、「**参照画像の自動ダウンロード・キャッシュ**」「**マルチモーダルなパーツ組み立て**」「**SDK互換のシード値管理**」といった、実践的なアプリケーション開発で必ず直面する「共通の課題」を解決するために設計されているのだ。
+単なる API ラッパーではなく、「**参照画像の自動ダウンロード・キャッシュ**」「**SSRFプロテクション**」「**マルチモーダルなパーツ組み立て**」「**SDK互換のシード値管理**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されているのだ。
 
 ---
 
 ## ✨ 主な特徴 (Features)
 
-* **🖼️ Multi-Modal Orchestration**: テキストと複数の参照画像（URL）を組み合わせた高度なプロンプト構築を数行で実現。
-* **⚡️ Built-in Image Caching**: 同一URLの参照画像を何度もダウンロードしないためのキャッシュ機構（`ImageCacher`）を標準搭載。
-* **🛠️ Domain-Driven Design**: `domain` パッケージに型を定義し、ビジネスロジックが Gemini SDK の内部仕様に依存しすぎないクリーンな設計。
+* **🖼️ Multi-Modal Orchestration**: テキストと複数の参照画像（URL）を組み合わせた高度なプロンプト構築を数行で実現。単一パネル生成に加え、複数画像を参照する一括ページ生成にも対応。
+* **🛡️ SSRF Protected**: ユーザー指定のURLから画像を生成する際、内部ネットワークへの攻撃（SSRF）を防ぐため、名前解決レベルでのIP制限バリデーションを標準装備。
+* **⚡️ Built-in Image Caching**: 同一URLの参照画像を何度もダウンロードしないためのキャッシュ機構（`ImageCacher`）を搭載。
 * **🧬 Seed Consistency**: Gemini SDK 特有の `*int32` Seed値を扱いやすくカプセル化し、生成結果の再現性をサポート。
 * **ログ・デバッグ支援**: 生成プロセスの詳細（パーツ構成、ブロック理由等）を `slog` で可視化。
 
@@ -26,10 +26,10 @@
 
 ## 🛡️ セキュリティ (Security)
 
-本ライブラリは、ユーザー指定のURL（`ReferenceURLs`）をサーバーサイドで取得する際の **SSRF (Server-Side Request Forgery)** 攻撃を防ぐため、以下の安全策を講じています。
+本ライブラリは、サーバーサイドで外部URLを取得する際の **SSRF (Server-Side Request Forgery)** 攻撃を防ぐため、以下の安全策を講じています。
 
-* **IP制限**: `localhost`、プライベートIPアドレス（例: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`）、リンクローカルアドレスといった、内部ネットワークや特殊用途のIPアドレスへのリクエストを名前解決レベルでブロックします。
-* **プロトコル制限**: `http` および `https` 以外のスキームを拒否。
+* **IP制限**: `localhost`、プライベートIP、リンクローカルアドレスといった、内部ネットワークへのリクエストを名前解決後のIPレベルでブロック。
+* **プロトコル制限**: `http` および `https` 以外の不許可スキームを拒否。
 
 ---
 
@@ -37,12 +37,12 @@
 
 ```text
 pkg/
-├── domain/            # 共通ドメインモデル（Request/Response, Character定義など）
-│   └── image.go       # 漫画・画像生成に関するデータ構造
+├── domain/            # 共通ドメインモデル（Request/Response 等）
 └── adapters/          # 具体的な実装（アダプター層）
-    ├── core.go        # 画像DL、キャッシュ、パースの共通基盤 (GeminiImageCore)
-    ├── image.go       # 単体パネル・画像生成 (GeminiImageAdapter)
-    └── manga.go       # 複数画像を含むページ一括生成 (GeminiMangaPageAdapter)
+    ├── core.go        # 画像DL、キャッシュ、パース、SSRF対策の基盤 (GeminiImageCore)
+    ├── generator.go   # 単一パネル・画像生成 (GeminiImageGenerator)
+    ├── page_gen.go    # 複数画像を含むページ一括生成 (GeminiMangaPageGenerator)
+    └── util.go        # シード値変換等のユーティリティ
 
 ```
 
@@ -50,7 +50,7 @@ pkg/
 
 ## 🛠️ クイックスタート (Usage)
 
-### 1. Adapter の初期化
+### 1. コアロジックとジェネレーターの初期化
 
 ```go
 import (
@@ -58,34 +58,48 @@ import (
     "github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 )
 
-// コアロジックの準備
+// 1. 画像処理・キャッシュ・セキュリティを担当する Core の準備
 core := adapters.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
 
-// アダプターの生成
-adapter := adapters.NewGeminiImageAdapter(
+// 2. 単一パネル生成用ジェネレーターの生成
+generator := adapters.NewGeminiImageGenerator(
     core,
     apiClient,
     "imagen-3.0-generate-001",
-    "anime style, high quality, manga illustration",
 )
 
 ```
 
-### 2. 画像の生成
+### 2. 単一パネルの生成
 
 ```go
 req := domain.ImageGenerationRequest{
     Prompt:       "ずんだもんが森で餅を食べている",
     AspectRatio:  "16:9",
-    ReferenceURL: "https://example.com/zundamon.png",
+    ReferenceURL: "https://example.com/character_sheet.png",
+    Seed:         ptrInt64(12345),
 }
 
-resp, err := adapter.GenerateMangaPanel(ctx, req)
-if err != nil {
-    log.Fatal(err)
-}
-
+resp, err := generator.GenerateMangaPanel(ctx, req)
 // resp.Data に画像バイナリが含まれるのだ！
+
+```
+
+### 3. 複数画像を参照した一括ページ生成
+
+```go
+pageGen := adapters.NewGeminiMangaPageGenerator(core, apiClient, "imagen-3.0")
+
+req := domain.ImagePageRequest{
+    Prompt: "二人のキャラクターが対峙している緊迫したシーン",
+    ReferenceURLs: []string{
+        "https://example.com/hero.png",
+        "https://example.com/villain.png",
+    },
+    AspectRatio: "3:4",
+}
+
+resp, err := pageGen.GenerateMangaPage(ctx, req)
 
 ```
 
@@ -102,5 +116,3 @@ if err != nil {
 ### 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
-
-
