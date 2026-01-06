@@ -21,7 +21,7 @@ import (
 
 const (
 	// UseImageCompression は画像を送信前に圧縮するかどうかのフラグなのだ
-	UseImageCompression = false
+	UseImageCompression = true
 	// ImageCompressionQuality は JPEG 圧縮の品質（1-100）なのだ
 	ImageCompressionQuality = 75
 )
