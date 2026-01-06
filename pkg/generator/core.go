@@ -65,7 +65,7 @@ func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Dura
 }
 
 // PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換する
-func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
+func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
 	// 1. キャッシュチェック（[]byte をキャッシュから探すのだ）
 	if c.cache != nil {
 		if val, ok := c.cache.Get(rawURL); ok {
