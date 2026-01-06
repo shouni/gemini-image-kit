@@ -171,6 +171,10 @@ func isSafeURL(rawURL string) (bool, error) {
 		return false, fmt.Errorf("ホスト '%s' の名前解決に失敗しました: %w", parsedURL.Hostname(), err)
 	}
 
+	if len(ips) == 0 {
+		return false, fmt.Errorf("ホスト '%s' に対応するIPアドレスが見つかりませんでした", parsedURL.Hostname())
+	}
+
 	for _, ip := range ips {
 		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 			return false, fmt.Errorf("制限されたネットワークへのアクセスを検知: %s", ip.String())
