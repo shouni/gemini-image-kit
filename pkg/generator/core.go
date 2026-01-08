@@ -61,7 +61,13 @@ func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Dura
 
 // PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換する
 func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// 1. キャッシュチェック（[]byte をキャッシュから探すのだ）
+	// 1. セキュリティチェック (SSRF 対策) - 最優先で実行
+	if safe, err := IsSafeURL(rawURL); !safe {
+		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", rawURL, "error", err)
+		return nil
+	}
+
+	// 2. キャッシュチェック（[]byte をキャッシュから探すのだ）
 	if c.cache != nil {
 		if val, ok := c.cache.Get(rawURL); ok {
 			if data, ok := val.([]byte); ok {
@@ -69,12 +75,6 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 				return c.toPart(data)
 			}
 		}
-	}
-
-	// 2. SSRF対策
-	if safe, err := isSafeURL(rawURL); !safe {
-		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", rawURL, "error", err)
-		return nil
 	}
 
 	// 3. ダウンロード

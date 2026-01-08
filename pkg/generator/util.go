@@ -25,8 +25,10 @@ func dereferenceSeed(s *int64) int64 {
 	return *s
 }
 
-// isSafeURL は SSRF 対策として URL を検証するのだ。
-func isSafeURL(rawURL string) (bool, error) {
+// IsSafeURL は、SSRF (Server-Side Request Forgery) 対策として URL を検証します。
+// 許可されたスキーム (http, https) かつ、プライベートIPやループバックアドレスを
+// ターゲットにしていないことを確認します。
+func IsSafeURL(rawURL string) (bool, error) {
 	parsedURL, err := url.ParseRequestURI(rawURL)
 	if err != nil {
 		return false, fmt.Errorf("URLパース失敗: %w", err)
@@ -39,10 +41,6 @@ func isSafeURL(rawURL string) (bool, error) {
 	ips, err := net.LookupIP(parsedURL.Hostname())
 	if err != nil {
 		return false, fmt.Errorf("ホスト '%s' の名前解決に失敗しました: %w", parsedURL.Hostname(), err)
-	}
-
-	if len(ips) == 0 {
-		return false, fmt.Errorf("ホスト '%s' に対応するIPアドレスが見つかりませんでした", parsedURL.Hostname())
 	}
 
 	for _, ip := range ips {

@@ -58,7 +58,6 @@ func TestCompressToJPEG(t *testing.T) {
 		}
 	})
 
-	// ここを修正しました：t *testing.T
 	t.Run("不正なデータを与えた場合にエラーを返すこと", func(t *testing.T) {
 		invalidData := []byte("this is not an image")
 		_, err := CompressToJPEG(invalidData, 75)
