@@ -1,5 +1,11 @@
 package generator
 
+import (
+	"fmt"
+	"net"
+	"net/url"
+)
+
 // seedToPtrInt32 は domain の *int64 を SDK 用の *int32 に変換するのだ。
 // Imagen API は int32 を期待しているための調整なのだ。
 func seedToPtrInt32(s *int64) *int32 {
@@ -17,4 +23,33 @@ func dereferenceSeed(s *int64) int64 {
 		return 0
 	}
 	return *s
+}
+
+// isSafeURL は SSRF 対策として URL を検証するのだ。
+func isSafeURL(rawURL string) (bool, error) {
+	parsedURL, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return false, fmt.Errorf("URLパース失敗: %w", err)
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return false, fmt.Errorf("不許可スキーム: %s", parsedURL.Scheme)
+	}
+
+	ips, err := net.LookupIP(parsedURL.Hostname())
+	if err != nil {
+		return false, fmt.Errorf("ホスト '%s' の名前解決に失敗しました: %w", parsedURL.Hostname(), err)
+	}
+
+	if len(ips) == 0 {
+		return false, fmt.Errorf("ホスト '%s' に対応するIPアドレスが見つかりませんでした", parsedURL.Hostname())
+	}
+
+	for _, ip := range ips {
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return false, fmt.Errorf("制限されたネットワークへのアクセスを検知: %s", ip.String())
+		}
+	}
+
+	return true, nil
 }
