@@ -8,7 +8,8 @@ import (
 	_ "image/png"
 )
 
-// CompressToJPEG は画像データを JPEG 形式に圧縮します。
+// CompressToJPEG は画像データ（PNG, GIF, JPEG等）をJPEG形式に圧縮します。
+// image.Decodeがサポートするフォーマットに対応しています。
 func CompressToJPEG(data []byte, quality int) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
