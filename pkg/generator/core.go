@@ -1,19 +1,14 @@
 package generator
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image"
-	_ "image/gif"
-	"image/jpeg"
-	_ "image/png"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
+
+	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 	"google.golang.org/genai"
@@ -54,7 +49,7 @@ type GeminiImageCore struct {
 // NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返すのだ。
 func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
 	if client == nil {
-		return nil, fmt.Errorf("httpClient は必須なのだ")
+		return nil, fmt.Errorf("httpClient は必須です")
 	}
 
 	return &GeminiImageCore{
@@ -66,7 +61,13 @@ func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Dura
 
 // PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換する
 func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// 1. キャッシュチェック（[]byte をキャッシュから探すのだ）
+	// 1. セキュリティチェック (SSRF 対策) - 最優先で実行
+	if safe, err := IsSafeURL(rawURL); !safe {
+		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", rawURL, "error", err)
+		return nil
+	}
+
+	// 2. キャッシュチェック（[]byte をキャッシュから探すのだ）
 	if c.cache != nil {
 		if val, ok := c.cache.Get(rawURL); ok {
 			if data, ok := val.([]byte); ok {
@@ -74,12 +75,6 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 				return c.toPart(data)
 			}
 		}
-	}
-
-	// 2. SSRF対策
-	if safe, err := isSafeURL(rawURL); !safe {
-		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", rawURL, "error", err)
-		return nil
 	}
 
 	// 3. ダウンロード
@@ -92,7 +87,7 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 	// 4. フラグに基づいた圧縮処理
 	finalData := data
 	if UseImageCompression {
-		compressed, err := c.compressImage(data, ImageCompressionQuality)
+		compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality)
 		if err != nil {
 			slog.WarnContext(ctx, "圧縮に失敗したためオリジナルを使用するのだ", "error", err)
 		} else {
@@ -153,48 +148,4 @@ func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	return nil, fmt.Errorf("no image data found in response parts")
-}
-
-// isSafeURL は SSRF 対策として URL を検証するのだ。
-func isSafeURL(rawURL string) (bool, error) {
-	parsedURL, err := url.ParseRequestURI(rawURL)
-	if err != nil {
-		return false, fmt.Errorf("URLパース失敗: %w", err)
-	}
-
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return false, fmt.Errorf("不許可スキーム: %s", parsedURL.Scheme)
-	}
-
-	ips, err := net.LookupIP(parsedURL.Hostname())
-	if err != nil {
-		return false, fmt.Errorf("ホスト '%s' の名前解決に失敗しました: %w", parsedURL.Hostname(), err)
-	}
-
-	if len(ips) == 0 {
-		return false, fmt.Errorf("ホスト '%s' に対応するIPアドレスが見つかりませんでした", parsedURL.Hostname())
-	}
-
-	for _, ip := range ips {
-		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return false, fmt.Errorf("制限されたネットワークへのアクセスを検知: %s", ip.String())
-		}
-	}
-
-	return true, nil
-}
-
-// compressImage は画像を JPEG 形式に圧縮してバイト列を返す。
-func (c *GeminiImageCore) compressImage(data []byte, quality int) ([]byte, error) {
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-
-	buf := new(bytes.Buffer)
-	opt := jpeg.Options{Quality: quality}
-	if err := jpeg.Encode(buf, img, &opt); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }

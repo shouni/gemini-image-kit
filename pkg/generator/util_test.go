@@ -30,3 +30,32 @@ func TestSeedUtils(t *testing.T) {
 		}
 	})
 }
+
+func TestIsSafeURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"正常なパブリックURL", "https://www.google.com/favicon.ico", false},
+		{"不正なスキーム", "gopher://example.com", true},
+		{"ループバック", "http://localhost/admin", true},
+		{"プライベートIP (クラスA)", "http://10.255.255.254/metadata", true},
+		{"名前解決できないドメイン", "http://this.should.not.exist.invalid", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			safe, err := IsSafeURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("isSafeURL() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && !safe {
+				t.Error("safe URL was flagged as unsafe")
+			}
+			if tt.wantErr && safe {
+				t.Error("unsafe URL was flagged as safe")
+			}
+		})
+	}
+}
