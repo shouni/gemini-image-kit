@@ -116,6 +116,7 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 			slog.WarnContext(ctx, "圧縮に失敗したためオリジナルを使用するのだ", "error", err)
 		} else {
 			finalData = compressed
+			slog.DebugContext(ctx, "画像を圧縮したのだ", "original_size", len(data), "new_size", len(finalData))
 		}
 	}
 
