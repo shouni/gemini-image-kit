@@ -38,6 +38,8 @@ func TestIsSafeURL(t *testing.T) {
 		wantErr bool
 	}{
 		{"正常なパブリックURL", "https://www.google.com/favicon.ico", false},
+		{"GCSスキーム (gs://)", "gs://my-bucket/path/to/image.png", false},
+
 		{"不正なスキーム", "gopher://example.com", true},
 		{"ループバック", "http://localhost/admin", true},
 		{"プライベートIP (クラスA)", "http://10.255.255.254/metadata", true},
@@ -48,13 +50,13 @@ func TestIsSafeURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			safe, err := IsSafeURL(tt.url)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("isSafeURL() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("IsSafeURL() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && !safe {
-				t.Error("safe URL was flagged as unsafe")
+				t.Errorf("%s: safe URL was flagged as unsafe", tt.url)
 			}
 			if tt.wantErr && safe {
-				t.Error("unsafe URL was flagged as safe")
+				t.Errorf("%s: unsafe URL was flagged as safe", tt.url)
 			}
 		})
 	}

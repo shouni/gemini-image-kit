@@ -3,6 +3,7 @@ package generator
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
 
@@ -41,18 +43,23 @@ type ImageCacher interface {
 
 // GeminiImageCore は画像生成の基盤となるロジックを管理するのだ。
 type GeminiImageCore struct {
+	reader     remoteio.InputReader
 	httpClient HTTPClient
 	cache      ImageCacher
 	expiration time.Duration
 }
 
 // NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返すのだ。
-func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+func NewGeminiImageCore(reader remoteio.InputReader, client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+	if reader == nil {
+		return nil, fmt.Errorf("InputReader は必須です")
+	}
 	if client == nil {
 		return nil, fmt.Errorf("httpClient は必須です")
 	}
 
 	return &GeminiImageCore{
+		reader:     reader,
 		httpClient: client,
 		cache:      cache,
 		expiration: cacheTTL,
@@ -61,13 +68,10 @@ func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Dura
 
 // PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換する
 func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// 1. セキュリティチェック (SSRF 対策) - 最優先で実行
 	if safe, err := IsSafeURL(rawURL); !safe {
 		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", rawURL, "error", err)
 		return nil
 	}
-
-	// 2. キャッシュチェック（[]byte をキャッシュから探すのだ）
 	if c.cache != nil {
 		if val, ok := c.cache.Get(rawURL); ok {
 			if data, ok := val.([]byte); ok {
@@ -77,14 +81,34 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 		}
 	}
 
-	// 3. ダウンロード
-	data, err := c.httpClient.FetchBytes(ctx, rawURL)
+	var data []byte
+	var err error
+
+	if strings.HasPrefix(rawURL, "gs://") {
+		// GCS 経由で取得
+		slog.DebugContext(ctx, "GCSから画像を取得", "url", rawURL)
+		rc, err := c.reader.Open(ctx, rawURL)
+		if err != nil {
+			slog.ErrorContext(ctx, "GCSファイルのオープンに失敗したのだ", "url", rawURL, "error", err)
+			return nil
+		}
+		defer rc.Close()
+
+		data, err = io.ReadAll(rc)
+		if err != nil {
+			slog.ErrorContext(ctx, "GCSファイルの読み取りに失敗したのだ", "url", rawURL, "error", err)
+			return nil
+		}
+	} else {
+		// 通常の HTTP 経由で取得
+		data, err = c.httpClient.FetchBytes(ctx, rawURL)
+	}
+
 	if err != nil {
 		slog.ErrorContext(ctx, "画像の取得に失敗したのだ", "url", rawURL, "error", err)
 		return nil
 	}
 
-	// 4. フラグに基づいた圧縮処理
 	finalData := data
 	if UseImageCompression {
 		compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality)
@@ -92,10 +116,9 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 			slog.WarnContext(ctx, "圧縮に失敗したためオリジナルを使用するのだ", "error", err)
 		} else {
 			finalData = compressed
-			slog.DebugContext(ctx, "画像を圧縮したのだ", "original_size", len(data), "new_size", len(finalData))
 		}
 	}
-	// 5. キャッシュ保存（圧縮済みのデータを保存するのだ）
+
 	if c.cache != nil {
 		c.cache.Set(rawURL, finalData, c.expiration)
 	}

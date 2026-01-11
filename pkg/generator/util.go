@@ -34,6 +34,10 @@ func IsSafeURL(rawURL string) (bool, error) {
 		return false, fmt.Errorf("URLパース失敗: %w", err)
 	}
 
+	if parsedURL.Scheme == "gs" {
+		return true, nil
+	}
+
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return false, fmt.Errorf("不許可スキーム: %s", parsedURL.Scheme)
 	}
