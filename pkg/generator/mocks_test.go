@@ -29,13 +29,6 @@ func (m *mockReader) Open(ctx context.Context, name string) (io.ReadCloser, erro
 	return nil, io.EOF
 }
 
-func (m *mockReader) FetchBytes(ctx context.Context, url string) ([]byte, error) {
-	if m.fetchFunc != nil {
-		return m.fetchFunc(ctx, url)
-	}
-	return nil, io.EOF
-}
-
 // ----------------------------------------------------------------------
 // mockHTTPClient: HTTPClient のモック
 // ----------------------------------------------------------------------
