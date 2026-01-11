@@ -10,48 +10,22 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットなのだ。
 
-単なる API ラッパーではなく、「**参照画像の自動ダウンロード・キャッシュ**」「**SSRFプロテクション**」「**インメモリ画像圧縮**」「**SDK互換のシード値管理**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されているのだ。
+単なる API ラッパーではなく、「**GCS/外部URLからの参照画像自動取得**」「**SSRFプロテクション**」「**インメモリ画像圧縮**」「**SDK互換のシード値管理**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されているのだ。
 
 ---
 
 ## ✨ 主な特徴 (Features)
 
-* **🖼️ Unified Generator**: 統合された `GeminiGenerator` により、単独パネル生成と複数参照ページ生成の両方を一つのインスタンスで提供。
-* **🛡️ SSRF Protected**: 外部URLから画像を読み込む際、名前解決後のIPレベルで内部ネットワークへのアクセスを遮断するバリデーションを標準装備。
+* **🖼️ Unified Generator**: `GenerateMangaPanel` (単独) と `GenerateMangaPage` (複数参照) を一つのインターフェースで統合管理。
+* **☁️ Cloud Storage Native**: `gs://` スキームを標準サポート。キャラクターデザインシートなどのアセットを GCS から直接参照可能。
+* **🛡️ SSRF Protected**: 外部 URL 取得時、名前解決後の IP レベルで内部ネットワークへのアクセスを遮断するバリデーションを標準装備。
 * **⚡️ Built-in Image Caching & Compression**:
-* 同一URLの参照画像を再利用する `ImageCacher` インターフェースにより通信量を削減。
-* 送信前に画像を最適化（JPEG圧縮）する機能を備え、ペイロードサイズを抑えて高速な生成を実現。
+* 同一 URL の再取得を防ぐ `ImageCacher` によりコストと通信量を削減。
+* 送信前に画像を最適化（JPEG 圧縮）し、ペイロードサイズを抑えて高速な生成を実現。
 
 
-* **🧬 Seed Consistency**: `*int64` (Domain) と `*int32` (Gemini SDK) の型変換をカプセル化し、一貫したシード値管理を実現。
-* **🪵 slog Integration**: 生成プロセス（パーツ構成、ブロック理由等）を構造化ログで可視化。
-
----
-
-## 🛡️ セキュリティ (Security)
-
-本ライブラリは、サーバーサイドで外部URLを取得する際の **SSRF (Server-Side Request Forgery)** 攻撃を防ぐため、以下の安全策を講じています。
-
-* **IP制限**: `isSafeURL` 関数により、`localhost`、プライベートIP、リンクローカルアドレスといった内部ネットワークへのリクエストをブロック。
-* **DNSリバインディング対策**: 名前解決の結果得られたすべてのIPを検証。
-* **プロトコル制限**: `http` および `https` 以外の不許可スキームを拒否。
-
----
-
-## 📂 プロジェクト構造 (Layout)
-
-```text
-pkg/
-├── domain/            # 共通ドメインモデル（Request/Response 等）
-├── generator/         # 統合パッケージ
-│   ├── interfaces.go  # 生成インターフェース定義
-│   ├── gemini.go      # GeminiGenerator 実装
-│   ├── core.go        # 画像DL、キャッシュ、パース基盤
-│   └── util.go        # SSRF対策・型変換ユーティリティ
-└── imgutil/           # 画像処理ユーティリティ
-    └── compressor.go  # JPEG圧縮・フォーマット変換
-
-```
+* **🧬 Seed Consistency**: `*int64` (Domain) と `*int32` (Gemini SDK) の変換を自動化し、一貫したシード値管理を実現。
+* **🪵 slog Integration**: 構造化ログにより、プロンプトの構成やブロック理由を詳細に可視化。
 
 ---
 
@@ -59,17 +33,18 @@ pkg/
 
 ### 1. ジェネレーターの初期化
 
-`NewGeminiGenerator` は依存関係の `nil` チェックを行うため、安全に初期化できるのだ。
+`NewGeminiImageCore` には GCS 読み込み用の `InputReader` と HTTP 取得用の `HTTPClient` を注入するのだ。
 
 ```go
 import (
+    "time"
     "github.com/shouni/gemini-image-kit/pkg/generator"
-    "github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+    "github.com/shouni/go-remote-io/pkg/remoteio"
 )
 
 // 1. 基盤となる Core の準備
-// httpClient, cache, expiration を注入するのだ
-core, err := generator.NewGeminiImageCore(httpClient, cache, 1*time.Hour)
+// reader (GCS対応), httpClient, cache, 有効期限をセット
+core, err := generator.NewGeminiImageCore(reader, httpClient, cache, 24*time.Hour)
 if err != nil {
     log.Fatal(err)
 }
@@ -82,29 +57,51 @@ if err != nil {
 
 ```
 
-### 2. 画像の生成（パネル or ページ）
+### 2. 画像の生成（GCS URL の活用）
 
-一つのインスタンスで柔軟なインターフェースを使い分けられるのだ。
+`ReferenceURLs` に `gs://` スキームを含めることで、クラウド上のアセットをシームレスに合成のヒントとして利用できるのだ。
 
 ```go
-// --- 単一パネルの生成 ---
-panelReq := domain.ImageGenerationRequest{
-    Prompt:       "青い空を飛ぶ白い鳥",
-    AspectRatio:  "16:9",
-    ReferenceURL: "https://example.com/ref.png",
-}
-panelResp, err := gen.GenerateMangaPanel(ctx, panelReq)
-
-// --- 複数画像を参照したページ一括生成 ---
-pageReq := domain.ImagePageRequest{
-    Prompt: "二人のキャラクターが対話しているシーン",
+// --- 複数画像を参照したページ生成 ---
+req := domain.ImagePageRequest{
+    Prompt: "このキャラクターがサイバーパンクな街並みに立っている様子",
     ReferenceURLs: []string{
-        "https://example.com/char_a.png",
-        "https://example.com/char_b.png",
+        "gs://my-bucket/assets/char_design.png", // GCSから直接読み込み
+        "https://example.com/background_style.jpg",
     },
-    AspectRatio: "3:4",
+    AspectRatio: "16:9",
 }
-pageResp, err := gen.GenerateMangaPage(ctx, pageReq)
+
+resp, err := gen.GenerateMangaPage(ctx, req)
+if err != nil {
+    log.Printf("生成エラー: %v", err)
+}
+
+```
+
+---
+
+## 🛡️ セキュリティ (Security)
+
+本ライブラリは、SSRF (Server-Side Request Forgery) 攻撃を防ぐため、以下の安全策を講じています。
+
+* **IP 制限**: `localhost`、プライベート IP、リンクローカルアドレスへのリクエストを強制ブロック。
+* **DNS 対策**: 名前解決されたすべての IP アドレスを検証。
+* **スキーム制限**: `http`, `https`, `gs` 以外の不許可プロトコルを拒否。
+
+---
+
+## 📂 プロジェクト構造 (Layout)
+
+```text
+pkg/
+├── domain/            # 共通ドメインモデル
+├── generator/         # コアロジック
+│   ├── interfaces.go  # インターフェース定義
+│   ├── gemini.go      # ジェネレーター実装
+│   ├── core.go        # 画像取得・キャッシュ・圧縮・パース
+│   └── util.go        # SSRF対策・型変換
+└── imgutil/           # 画像処理ユーティリティ
 
 ```
 
@@ -112,9 +109,9 @@ pageResp, err := gen.GenerateMangaPage(ctx, pageReq)
 
 ## 🤝 依存関係 (Dependencies)
 
-* [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini API 公式クライアント
-* [shouni/go-ai-client](https://github.com/shouni/go-ai-client) - AI通信の抽象化
-* [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - 堅牢な HTTP クライアント
+* [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
+* [shouni/go-ai-client](https://github.com/shouni/go-ai-client) - AI 通信の抽象化
+* [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - マルチストレージ Reader
 
 ---
 

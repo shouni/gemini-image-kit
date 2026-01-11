@@ -1,14 +1,74 @@
 package generator
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"time"
 
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
 	"google.golang.org/genai"
 )
 
 // ----------------------------------------------------------------------
-// mockImageCore: ImageGeneratorCore のモック
+// mockReader: remoteio.InputReader のモック
+// ----------------------------------------------------------------------
+
+type mockReader struct {
+	fetchFunc func(ctx context.Context, url string) ([]byte, error)
+}
+
+func (m *mockReader) Open(ctx context.Context, name string) (io.ReadCloser, error) {
+	if m.fetchFunc != nil {
+		data, err := m.fetchFunc(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}
+	return nil, io.EOF
+}
+
+// ----------------------------------------------------------------------
+// mockHTTPClient: HTTPClient のモック
+// ----------------------------------------------------------------------
+
+type mockHTTPClient struct {
+	fetchFunc func(ctx context.Context, url string) ([]byte, error)
+}
+
+func (m *mockHTTPClient) FetchBytes(ctx context.Context, url string) ([]byte, error) {
+	if m.fetchFunc != nil {
+		return m.fetchFunc(ctx, url)
+	}
+	return nil, nil
+}
+
+// ----------------------------------------------------------------------
+// mockCache: ImageCacher のモック
+// ----------------------------------------------------------------------
+
+type mockCache struct {
+	data map[string]any
+}
+
+func (m *mockCache) Get(key string) (any, bool) {
+	if m.data == nil {
+		return nil, false
+	}
+	v, ok := m.data[key]
+	return v, ok
+}
+
+func (m *mockCache) Set(key string, value any, d time.Duration) {
+	if m.data == nil {
+		m.data = make(map[string]any)
+	}
+	m.data[key] = value
+}
+
+// ----------------------------------------------------------------------
+// mockImageCore: ImageGeneratorCore のモック (上位層向け)
 // ----------------------------------------------------------------------
 
 type mockImageCore struct {

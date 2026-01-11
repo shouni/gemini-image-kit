@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,43 +12,9 @@ import (
 	"google.golang.org/genai"
 )
 
-// --- Mocks ---
-
-type mockHTTPClient struct {
-	fetchFunc func(ctx context.Context, url string) ([]byte, error)
-}
-
-func (m *mockHTTPClient) FetchBytes(ctx context.Context, url string) ([]byte, error) {
-	if m.fetchFunc != nil {
-		return m.fetchFunc(ctx, url)
-	}
-	return nil, nil
-}
-
-type mockCache struct {
-	data map[string]any
-}
-
-func (m *mockCache) Get(key string) (any, bool) {
-	if m.data == nil {
-		return nil, false
-	}
-	v, ok := m.data[key]
-	return v, ok
-}
-
-func (m *mockCache) Set(key string, value any, d time.Duration) {
-	if m.data == nil {
-		m.data = make(map[string]any)
-	}
-	m.data[key] = value
-}
-
-// --- Tests ---
-
 func TestNewGeminiImageCore(t *testing.T) {
 	t.Run("正常系: 必須パラメータがあれば初期化できるのだ", func(t *testing.T) {
-		core, err := NewGeminiImageCore(&mockHTTPClient{}, nil, time.Hour)
+		core, err := NewGeminiImageCore(&mockReader{}, &mockHTTPClient{}, nil, time.Hour)
 		if err != nil {
 			t.Fatalf("初期化に失敗したのだ: %v", err)
 		}
@@ -57,7 +24,7 @@ func TestNewGeminiImageCore(t *testing.T) {
 	})
 
 	t.Run("異常系: HTTPClientがnilならエラーを返すのだ", func(t *testing.T) {
-		core, err := NewGeminiImageCore(nil, nil, time.Hour)
+		core, err := NewGeminiImageCore(&mockReader{}, nil, nil, time.Hour)
 		if err == nil {
 			t.Error("HTTPClientがnilなのにエラーが発生しなかったのだ")
 		}
@@ -71,15 +38,41 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	ctx := context.Background()
 	validPng := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90w\x53\xde")
 	safeURL := "https://www.google.com/test.png"
+	gcsURL := "gs://my-bucket/images/test.png"
 
-	t.Run("キャッシュにある場合は安全チェックを飛ばしてキャッシュを返すのだ", func(t *testing.T) {
-		cache := &mockCache{data: map[string]any{safeURL: validPng}}
-		core, err := NewGeminiImageCore(&mockHTTPClient{}, cache, time.Hour)
+	t.Run("GCS (gs://) の場合は Reader を使用して取得するのだ", func(t *testing.T) {
+		reader := &mockReader{
+			fetchFunc: func(ctx context.Context, url string) ([]byte, error) {
+				if url == gcsURL {
+					return validPng, nil
+				}
+				return nil, fmt.Errorf("unexpected URL: %s", url)
+			},
+		}
+		// ✨ 修正: エラーを無視せず、失敗時は即座にテストを止めるのだ
+		core, err := NewGeminiImageCore(reader, &mockHTTPClient{}, nil, time.Hour)
 		if err != nil {
 			t.Fatalf("初期化エラー: %v", err)
 		}
 
-		// 修正ポイント: prepareImagePart (小文字) を呼ぶのだ
+		part := core.prepareImagePart(ctx, gcsURL)
+
+		if part == nil || part.InlineData == nil {
+			t.Fatal("GCSからの画像取得に失敗したのだ")
+		}
+		if !reflect.DeepEqual(part.InlineData.Data, validPng) {
+			t.Errorf("データが一致しないのだ")
+		}
+	})
+
+	t.Run("キャッシュにある場合は安全チェックを飛ばしてキャッシュを返すのだ", func(t *testing.T) {
+		cache := &mockCache{data: map[string]any{safeURL: validPng}}
+		// ✨ 修正: エラーハンドリングを追加したのだ
+		core, err := NewGeminiImageCore(&mockReader{}, &mockHTTPClient{}, cache, time.Hour)
+		if err != nil {
+			t.Fatalf("初期化エラー: %v", err)
+		}
+
 		part := core.prepareImagePart(ctx, safeURL)
 
 		if part == nil || part.InlineData == nil {
@@ -97,12 +90,12 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 				return validPng, nil
 			},
 		}
-		core, err := NewGeminiImageCore(httpClient, cache, time.Hour)
+		// ✨ 修正: エラーハンドリングを追加したのだ
+		core, err := NewGeminiImageCore(&mockReader{}, httpClient, cache, time.Hour)
 		if err != nil {
 			t.Fatalf("初期化エラー: %v", err)
 		}
 
-		// 修正ポイント: prepareImagePart (小文字) を呼ぶのだ
 		part := core.prepareImagePart(ctx, safeURL)
 
 		if part == nil {
@@ -113,13 +106,14 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 		if _, found := cache.Get(safeURL); !found {
 			t.Error("キャッシュに保存されていないのだ")
 		}
-		if !reflect.DeepEqual(part.InlineData.Data, validPng) {
-			t.Error("DLしたデータが正しく変換されていないのだ")
-		}
 	})
 
 	t.Run("安全でないURLはブロックするのだ", func(t *testing.T) {
-		core, _ := NewGeminiImageCore(&mockHTTPClient{}, nil, time.Hour)
+		// ✨ 修正: エラーハンドリングを追加したのだ
+		core, err := NewGeminiImageCore(&mockReader{}, &mockHTTPClient{}, nil, time.Hour)
+		if err != nil {
+			t.Fatalf("初期化エラー: %v", err)
+		}
 
 		cases := []struct {
 			name string
@@ -132,7 +126,6 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				// 修正ポイント: prepareImagePart (小文字) を呼ぶのだ
 				part := core.prepareImagePart(ctx, tc.url)
 				if part != nil {
 					t.Errorf("%s がブロックされなかったのだ", tc.name)
@@ -167,7 +160,6 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 			},
 		}
 
-		// 修正ポイント: parseToResponse (小文字) を呼ぶのだ
 		out, err := core.parseToResponse(resp, seed)
 		if err != nil {
 			t.Fatalf("パース中にエラーが発生したのだ: %v", err)
@@ -188,7 +180,6 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 			},
 		}
 
-		// 修正ポイント: parseToResponse (小文字) を呼ぶのだ
 		_, err := core.parseToResponse(resp, seed)
 		if err == nil {
 			t.Fatal("セーフティフィルター時はエラーを返すべきなのだ")

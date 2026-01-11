@@ -3,6 +3,7 @@ package generator
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
 
@@ -41,33 +43,38 @@ type ImageCacher interface {
 
 // GeminiImageCore は画像生成の基盤となるロジックを管理するのだ。
 type GeminiImageCore struct {
+	reader     remoteio.InputReader
 	httpClient HTTPClient
 	cache      ImageCacher
 	expiration time.Duration
 }
 
 // NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返すのだ。
-func NewGeminiImageCore(client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+func NewGeminiImageCore(reader remoteio.InputReader, client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+	if reader == nil {
+		return nil, fmt.Errorf("InputReader は必須です")
+	}
 	if client == nil {
 		return nil, fmt.Errorf("httpClient は必須です")
 	}
 
 	return &GeminiImageCore{
+		reader:     reader,
 		httpClient: client,
 		cache:      cache,
 		expiration: cacheTTL,
 	}, nil
 }
 
-// PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換する
+// PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換するなのだ。
 func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// 1. セキュリティチェック (SSRF 対策) - 最優先で実行
+	// 1. 安全チェック
 	if safe, err := IsSafeURL(rawURL); !safe {
 		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", rawURL, "error", err)
 		return nil
 	}
 
-	// 2. キャッシュチェック（[]byte をキャッシュから探すのだ）
+	// 2. キャッシュチェック
 	if c.cache != nil {
 		if val, ok := c.cache.Get(rawURL); ok {
 			if data, ok := val.([]byte); ok {
@@ -77,8 +84,8 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 		}
 	}
 
-	// 3. ダウンロード
-	data, err := c.httpClient.FetchBytes(ctx, rawURL)
+	// 3. データ取得
+	data, err := c.fetchImageData(ctx, rawURL)
 	if err != nil {
 		slog.ErrorContext(ctx, "画像の取得に失敗したのだ", "url", rawURL, "error", err)
 		return nil
@@ -95,12 +102,38 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 			slog.DebugContext(ctx, "画像を圧縮したのだ", "original_size", len(data), "new_size", len(finalData))
 		}
 	}
-	// 5. キャッシュ保存（圧縮済みのデータを保存するのだ）
+
+	// 5. キャッシュ保存
 	if c.cache != nil {
 		c.cache.Set(rawURL, finalData, c.expiration)
 	}
 
 	return c.toPart(finalData)
+}
+
+// fetchImageData は URL スキームに基づいて適切な取得方法を選択するのだ。
+func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
+	if strings.HasPrefix(rawURL, "gs://") {
+		return c.fetchFromGCS(ctx, rawURL)
+	}
+
+	return c.httpClient.FetchBytes(ctx, rawURL)
+}
+
+// fetchFromGCS は GCS からのデータ取得に特化したメソッドなのだ。
+func (c *GeminiImageCore) fetchFromGCS(ctx context.Context, url string) ([]byte, error) {
+	slog.DebugContext(ctx, "GCSから画像を取得", "url", url)
+	rc, err := c.reader.Open(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("GCSファイルのオープンに失敗: %w", err)
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("GCSファイルの読み取りに失敗: %w", err)
+	}
+	return data, nil
 }
 
 // toPart はバイナリデータを MIME タイプ付きの InlineData Part に変換するのだ。
