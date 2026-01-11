@@ -20,10 +20,8 @@
 * **☁️ Cloud Storage Native**: `gs://` スキームを標準サポート。キャラクターデザインシートなどのアセットを GCS から直接参照可能。
 * **🛡️ SSRF Protected**: 外部 URL 取得時、名前解決後の IP レベルで内部ネットワークへのアクセスを遮断するバリデーションを標準装備。
 * **⚡️ Built-in Image Caching & Compression**:
-* 同一 URL の再取得を防ぐ `ImageCacher` によりコストと通信量を削減。
-* 送信前に画像を最適化（JPEG 圧縮）し、ペイロードサイズを抑えて高速な生成を実現。
-
-
+    * 同一 URL の再取得を防ぐ `ImageCacher` によりコストと通信量を削減。
+    * 送信前に画像を最適化（JPEG 圧縮）し、ペイロードサイズを抑えて高速な生成を実現。
 * **🧬 Seed Consistency**: `*int64` (Domain) と `*int32` (Gemini SDK) の変換を自動化し、一貫したシード値管理を実現。
 * **🪵 slog Integration**: 構造化ログにより、プロンプトの構成やブロック理由を詳細に可視化。
 
