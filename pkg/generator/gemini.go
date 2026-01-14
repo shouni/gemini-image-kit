@@ -10,6 +10,11 @@ import (
 	"google.golang.org/genai"
 )
 
+const (
+	// negativePromptSeparator は、ユーザープロンプトとネガティブプロンプトを区切るためのヘッダー定義です。
+	negativePromptSeparator = "\n\n[Negative Prompt]\n"
+)
+
 // GeminiGenerator は、単一パネル生成と複数画像ページ生成の両方を担当するジェネレーターです。
 type GeminiGenerator struct {
 	imgCore  ImageGeneratorCore
@@ -17,7 +22,7 @@ type GeminiGenerator struct {
 	model    string
 }
 
-// NewGeminiGenerator は GeminiGenerator を初期化するのだ。
+// NewGeminiGenerator は GeminiGenerator を初期化し、新しいインスタンスを返します。
 func NewGeminiGenerator(
 	core ImageGeneratorCore,
 	aiClient gemini.GenerativeModel,
@@ -34,9 +39,9 @@ func NewGeminiGenerator(
 	}, nil
 }
 
-// GenerateMangaPanel は単一のパネル生成を行います。
+// GenerateMangaPanel は単一のパネル生成を実行します。
 func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
-	// プロンプトの組み立て（ネガティブプロンプトの結合）
+	// プロンプトの組み立て
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	parts := []*genai.Part{{Text: finalPrompt}}
 
@@ -46,7 +51,6 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 		}
 	}
 
-	// generateInternal を呼び出す際、req.SystemPrompt を渡すように修正したのだ
 	resp, err := g.generateInternal(ctx, parts, req.AspectRatio, req.SystemPrompt, req.Seed)
 	if err != nil {
 		return nil, fmt.Errorf("Geminiパネル生成エラー: %w", err)
@@ -54,7 +58,7 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 	return resp, nil
 }
 
-// GenerateMangaPage は複数画像を参照して1ページ生成を行うのだ。
+// GenerateMangaPage は複数の参照画像を基に、漫画の1ページを生成します。
 func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
 	slog.Info("Gemini一括生成リクエスト準備中", "model", g.model, "ref_count", len(req.ReferenceURLs))
 
@@ -77,7 +81,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 	return resp, nil
 }
 
-// generateInternal は画像生成の共通ロジックを処理する内部ヘルパーなのだ。
+// generateInternal は画像生成リクエストの共通処理を行う内部ヘルパーです。
 func (g *GeminiGenerator) generateInternal(
 	ctx context.Context,
 	parts []*genai.Part,
@@ -89,7 +93,7 @@ func (g *GeminiGenerator) generateInternal(
 	opts := gemini.ImageOptions{
 		AspectRatio:  aspectRatio,
 		SystemPrompt: systemPrompt,
-		Seed:         seedToPtrInt32(seed), // 型変換ヘルパー
+		Seed:         seedToPtrInt32(seed),
 	}
 
 	resp, err := g.aiClient.GenerateWithParts(ctx, g.model, parts, opts)
@@ -97,7 +101,6 @@ func (g *GeminiGenerator) generateInternal(
 		return nil, err
 	}
 
-	// 戻り値の Seed 値を決定するために dereferenceSeed を使用
 	out, err := g.imgCore.parseToResponse(resp, dereferenceSeed(seed))
 	if err != nil {
 		return nil, err
@@ -112,10 +115,11 @@ func (g *GeminiGenerator) generateInternal(
 
 // --- 以下、ヘルパー関数 ---
 
-// buildFinalPrompt はユーザープロンプトとネガティブプロンプトを整形するのだ。
+// buildFinalPrompt はユーザープロンプトとネガティブプロンプトを結合し、
+// AIモデルへの最終的なプロンプト文字列を構築します。
 func buildFinalPrompt(prompt, negative string) string {
 	if negative == "" {
 		return prompt
 	}
-	return fmt.Sprintf("%s\n\n[Negative Prompt]\n%s", prompt, negative)
+	return prompt + negativePromptSeparator + negative
 }
