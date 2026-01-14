@@ -28,8 +28,11 @@ func NewGeminiGenerator(
 	aiClient gemini.GenerativeModel,
 	model string,
 ) (*GeminiGenerator, error) {
-	if core == nil || aiClient == nil {
-		return nil, fmt.Errorf("必要な依存関係（core または aiClient）が不足しています")
+	if core == nil {
+		return nil, fmt.Errorf("core (ImageGeneratorCore) is required")
+	}
+	if aiClient == nil {
+		return nil, fmt.Errorf("aiClient (gemini.GenerativeModel) is required")
 	}
 
 	return &GeminiGenerator{
