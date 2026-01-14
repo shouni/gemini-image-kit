@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
@@ -116,12 +117,10 @@ func (g *GeminiGenerator) generateInternal(
 	}, nil
 }
 
-// --- 以下、ヘルパー関数 ---
-
 // buildFinalPrompt はユーザープロンプトとネガティブプロンプトを結合し、
 // AIモデルへの最終的なプロンプト文字列を構築します。
 func buildFinalPrompt(prompt, negative string) string {
-	if negative == "" {
+	if strings.TrimSpace(negative) == "" {
 		return prompt
 	}
 	return prompt + negativePromptSeparator + negative
