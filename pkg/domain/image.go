@@ -4,6 +4,7 @@ package domain
 // Seed を *int32 にすることで Gemini SDK との直結を優先しています。
 type ImageGenerationRequest struct {
 	Prompt         string
+	SystemPrompt   string
 	NegativePrompt string
 	AspectRatio    string
 	ReferenceURL   string
@@ -13,6 +14,7 @@ type ImageGenerationRequest struct {
 // ImagePageRequest は漫画1ページの一括生成要求です。
 type ImagePageRequest struct {
 	Prompt         string
+	SystemPrompt   string
 	NegativePrompt string
 	AspectRatio    string
 	ReferenceURLs  []string
