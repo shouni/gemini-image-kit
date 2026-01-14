@@ -13,6 +13,7 @@ import (
 
 const (
 	// negativePromptSeparator は、ユーザープロンプトとネガティブプロンプトを区切るためのヘッダー定義です。
+	// この形式は、モデルが両者を明確に区別するために効果的であることが確認されています。
 	negativePromptSeparator = "\n\n[Negative Prompt]\n"
 )
 
@@ -123,5 +124,10 @@ func buildFinalPrompt(prompt, negative string) string {
 	if strings.TrimSpace(negative) == "" {
 		return prompt
 	}
-	return prompt + negativePromptSeparator + negative
+	var sb strings.Builder
+	sb.WriteString(prompt)
+	sb.WriteString(negativePromptSeparator)
+	sb.WriteString(negative)
+
+	return sb.String()
 }
