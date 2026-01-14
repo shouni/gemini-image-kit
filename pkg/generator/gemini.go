@@ -10,8 +10,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// GeminiGenerator は、単一パネル生成(GenerateMangaPanel)と
-// 複数画像ページ生成(GenerateMangaPage)の両方を担当する統合ジェネレーターです。
+// GeminiGenerator は、単一パネル生成と複数画像ページ生成の両方を担当するジェネレーターです。
 type GeminiGenerator struct {
 	imgCore  ImageGeneratorCore
 	aiClient gemini.GenerativeModel
@@ -24,11 +23,8 @@ func NewGeminiGenerator(
 	aiClient gemini.GenerativeModel,
 	model string,
 ) (*GeminiGenerator, error) {
-	if core == nil {
-		return nil, fmt.Errorf("core (ImageGeneratorCore) is required")
-	}
-	if aiClient == nil {
-		return nil, fmt.Errorf("aiClient (gemini.GenerativeModel) is required")
+	if core == nil || aiClient == nil {
+		return nil, fmt.Errorf("必要な依存関係（core または aiClient）が不足しています")
 	}
 
 	return &GeminiGenerator{
@@ -38,18 +34,70 @@ func NewGeminiGenerator(
 	}, nil
 }
 
-// generateInternal は画像生成の共通ロジック（リクエスト、通信、解析）を一括で行うヘルパーなのだ。
-func (g *GeminiGenerator) generateInternal(ctx context.Context, parts []*genai.Part, aspectRatio string, seed *int64) (*domain.ImageResponse, error) {
+// GenerateMangaPanel は単一のパネル生成を行います。
+func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
+	// プロンプトの組み立て（ネガティブプロンプトの結合）
+	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
+	parts := []*genai.Part{{Text: finalPrompt}}
+
+	if req.ReferenceURL != "" {
+		if imgPart := g.imgCore.prepareImagePart(ctx, req.ReferenceURL); imgPart != nil {
+			parts = append(parts, imgPart)
+		}
+	}
+
+	// generateInternal を呼び出す際、req.SystemPrompt を渡すように修正したのだ
+	resp, err := g.generateInternal(ctx, parts, req.AspectRatio, req.SystemPrompt, req.Seed)
+	if err != nil {
+		return nil, fmt.Errorf("Geminiパネル生成エラー: %w", err)
+	}
+	return resp, nil
+}
+
+// GenerateMangaPage は複数画像を参照して1ページ生成を行うのだ。
+func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
+	slog.Info("Gemini一括生成リクエスト準備中", "model", g.model, "ref_count", len(req.ReferenceURLs))
+
+	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
+	parts := []*genai.Part{{Text: finalPrompt}}
+
+	for _, url := range req.ReferenceURLs {
+		if url == "" {
+			continue
+		}
+		if imgPart := g.imgCore.prepareImagePart(ctx, url); imgPart != nil {
+			parts = append(parts, imgPart)
+		}
+	}
+
+	resp, err := g.generateInternal(ctx, parts, req.AspectRatio, req.SystemPrompt, req.Seed)
+	if err != nil {
+		return nil, fmt.Errorf("Gemini一括ページ生成エラー: %w", err)
+	}
+	return resp, nil
+}
+
+// generateInternal は画像生成の共通ロジックを処理する内部ヘルパーなのだ。
+func (g *GeminiGenerator) generateInternal(
+	ctx context.Context,
+	parts []*genai.Part,
+	aspectRatio string,
+	systemPrompt string,
+	seed *int64,
+) (*domain.ImageResponse, error) {
+
 	opts := gemini.ImageOptions{
-		AspectRatio: aspectRatio,
-		Seed:        seedToPtrInt32(seed),
+		AspectRatio:  aspectRatio,
+		SystemPrompt: systemPrompt,
+		Seed:         seedToPtrInt32(seed), // 型変換ヘルパー
 	}
 
 	resp, err := g.aiClient.GenerateWithParts(ctx, g.model, parts, opts)
 	if err != nil {
-		return nil, err // ラップは呼び出し元で行うのだ
+		return nil, err
 	}
 
+	// 戻り値の Seed 値を決定するために dereferenceSeed を使用
 	out, err := g.imgCore.parseToResponse(resp, dereferenceSeed(seed))
 	if err != nil {
 		return nil, err
@@ -62,40 +110,12 @@ func (g *GeminiGenerator) generateInternal(ctx context.Context, parts []*genai.P
 	}, nil
 }
 
-// GenerateMangaPanel は単一のパネル生成を行うのだ。
-func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
-	parts := []*genai.Part{{Text: req.Prompt}}
+// --- 以下、ヘルパー関数 ---
 
-	if req.ReferenceURL != "" {
-		if imgPart := g.imgCore.prepareImagePart(ctx, req.ReferenceURL); imgPart != nil {
-			parts = append(parts, imgPart)
-		}
+// buildFinalPrompt はユーザープロンプトとネガティブプロンプトを整形するのだ。
+func buildFinalPrompt(prompt, negative string) string {
+	if negative == "" {
+		return prompt
 	}
-
-	resp, err := g.generateInternal(ctx, parts, req.AspectRatio, req.Seed)
-	if err != nil {
-		return nil, fmt.Errorf("Geminiパネル生成エラー: %w", err)
-	}
-	return resp, nil
-}
-
-// GenerateMangaPage は複数画像を参照して1ページ生成を行うのだ。
-func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
-	slog.Info("Gemini一括生成リクエスト準備中", "model", g.model, "ref_count", len(req.ReferenceURLs))
-
-	parts := []*genai.Part{{Text: req.Prompt}}
-	for _, url := range req.ReferenceURLs {
-		if url == "" {
-			continue
-		}
-		if imgPart := g.imgCore.prepareImagePart(ctx, url); imgPart != nil {
-			parts = append(parts, imgPart)
-		}
-	}
-
-	resp, err := g.generateInternal(ctx, parts, req.AspectRatio, req.Seed)
-	if err != nil {
-		return nil, fmt.Errorf("Gemini一括ページ生成エラー: %w", err)
-	}
-	return resp, nil
+	return fmt.Sprintf("%s\n\n[Negative Prompt]\n%s", prompt, negative)
 }
