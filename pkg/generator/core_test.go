@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,9 +74,10 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 
 	core, _ := NewGeminiImageCore(ai, reader, &mockHTTPClient{}, cache, time.Hour)
 
-	t.Run("キャッシュから名前を引いて削除", func(t *testing.T) {
+	t.Run("キャッシュから名前を引いて削除に成功する", func(t *testing.T) {
 		fileURL := "https://example.com/image.png"
 		apiName := "files/specific-id"
+		// 削除にはこのキャッシュが必須
 		cache.Set(cacheKeyFileAPIName+fileURL, apiName, time.Hour)
 
 		err := core.DeleteFile(ctx, fileURL)
@@ -88,15 +90,18 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 		}
 	})
 
-	t.Run("キャッシュがない場合は引数をそのまま使って削除", func(t *testing.T) {
+	t.Run("キャッシュがない場合はエラーを返す（仕様変更の確認）", func(t *testing.T) {
 		rawID := "files/raw-id"
+		// キャッシュに何も入れずに実行
 		err := core.DeleteFile(ctx, rawID)
 
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err == nil {
+			t.Error("expected error when cache is missing, but got nil")
 		}
-		if ai.lastFileName != rawID {
-			t.Errorf("expected %s, got %s", rawID, ai.lastFileName)
+
+		expectedErrMsg := "cannot determine file name for deletion"
+		if err != nil && !strings.Contains(err.Error(), expectedErrMsg) {
+			t.Errorf("expected error message to contain %q, got %q", expectedErrMsg, err.Error())
 		}
 	})
 }

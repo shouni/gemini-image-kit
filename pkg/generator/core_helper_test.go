@@ -9,18 +9,24 @@ import (
 	"google.golang.org/genai"
 )
 
-// prepareImagePart のテスト（キャッシュと変換）
+// PrepareImagePart のテスト（キャッシュと変換）
 func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	ctx := context.Background()
 	cache := &mockCache{data: make(map[string]any)}
-	core := &GeminiImageCore{cache: cache}
+	// mocks_test.go の mockHTTPClient や mockReader を使用
+	core := &GeminiImageCore{
+		cache:      cache,
+		httpClient: &mockHTTPClient{data: []byte("fake-image")},
+		reader:     &mockReader{},
+	}
 
 	t.Run("キャッシュヒット時はFileDataを返す", func(t *testing.T) {
 		rawURL := "https://example.com/img.png"
 		fileURI := "https://generativelanguage.googleapis.com/v1beta/files/test-id"
 		cache.Set(cacheKeyFileAPIURI+rawURL, fileURI, time.Hour)
 
-		part := core.prepareImagePart(ctx, rawURL)
+		// メソッド名を大文字に変更
+		part := core.PrepareImagePart(ctx, rawURL)
 
 		if part == nil || part.FileData == nil {
 			t.Fatal("expected FileData part, got nil or other")
@@ -31,23 +37,25 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	})
 
 	t.Run("不正なURLはnilを返す(fetchImageData内のIsSafeURLで失敗)", func(t *testing.T) {
-		part := core.prepareImagePart(ctx, "http://127.0.0.1/evil.png")
+		// ローカルホスト等は IsSafeURL で false になる想定
+		part := core.PrepareImagePart(ctx, "http://127.0.0.1/evil.png")
 		if part != nil {
 			t.Error("expected nil for unsafe URL")
 		}
 	})
 }
 
-// parseToResponse のテスト
+// ParseToResponse のテスト
 func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 	core := &GeminiImageCore{}
 	seed := int64(999)
 
-	t.Run("正常系", func(t *testing.T) {
+	t.Run("正常系: FinishReasonStop", func(t *testing.T) {
 		resp := &gemini.Response{
 			RawResponse: &genai.GenerateContentResponse{
 				Candidates: []*genai.Candidate{
 					{
+						FinishReason: genai.FinishReasonStop,
 						Content: &genai.Content{
 							Parts: []*genai.Part{
 								{
@@ -63,7 +71,7 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 			},
 		}
 
-		out, err := core.parseToResponse(resp, seed)
+		out, err := core.ParseToResponse(resp, seed)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -72,17 +80,47 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("異常系: 画像データなし", func(t *testing.T) {
+	t.Run("異常系: FinishReasonSafety によるブロック", func(t *testing.T) {
 		resp := &gemini.Response{
 			RawResponse: &genai.GenerateContentResponse{
 				Candidates: []*genai.Candidate{
-					{Content: &genai.Content{Parts: []*genai.Part{{Text: "just text"}}}},
+					{
+						FinishReason: genai.FinishReasonSafety,
+						Content:      &genai.Content{Parts: []*genai.Part{}},
+					},
 				},
 			},
 		}
-		_, err := core.parseToResponse(resp, seed)
+		_, err := core.ParseToResponse(resp, seed)
+		if err == nil {
+			t.Error("expected error for Safety block")
+		}
+		if err != nil && !testing.Short() {
+			t.Logf("expected error message: %v", err)
+		}
+	})
+
+	t.Run("異常系: 画像データなし（テキストのみ）", func(t *testing.T) {
+		resp := &gemini.Response{
+			RawResponse: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						FinishReason: genai.FinishReasonStop,
+						Content:      &genai.Content{Parts: []*genai.Part{{Text: "just text"}}},
+					},
+				},
+			},
+		}
+		_, err := core.ParseToResponse(resp, seed)
 		if err == nil {
 			t.Error("expected error for text-only response")
+		}
+	})
+
+	t.Run("異常系: 空のレスポンス", func(t *testing.T) {
+		_, err := core.ParseToResponse(nil, seed)
+		if err == nil {
+			t.Error("expected error for nil response")
 		}
 	})
 }

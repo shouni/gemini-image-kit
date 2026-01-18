@@ -13,7 +13,7 @@ import (
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 )
 
-// GeminiImageCore は AssetManager と ImageGeneratorCore の両方を実装します。
+// GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
 	reader     remoteio.InputReader
@@ -22,10 +22,20 @@ type GeminiImageCore struct {
 	expiration time.Duration
 }
 
+// NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
 func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
-	if aiClient == nil || reader == nil || client == nil {
-		return nil, fmt.Errorf("required dependencies are missing")
+	// どの依存関係が不足しているか具体的に示すように修正
+	if aiClient == nil {
+		return nil, fmt.Errorf("aiClient is required")
 	}
+	if reader == nil {
+		return nil, fmt.Errorf("reader is required")
+	}
+	if client == nil {
+		return nil, fmt.Errorf("httpClient is required")
+	}
+	// cache は nil を許容（キャッシュなし動作）
+
 	return &GeminiImageCore{
 		aiClient:   aiClient,
 		reader:     reader,
@@ -35,6 +45,7 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	}, nil
 }
 
+// UploadFile は画像を Gemini File API にアップロードし、URI を返します。
 func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
 	cacheKeyURI := cacheKeyFileAPIURI + fileURI
 	if c.cache != nil {
@@ -59,11 +70,14 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 
 	mimeType := http.DetectContentType(finalData)
 	displayName := filepath.Base(fileURI)
+
+	// File API へのアップロード
 	uri, fileName, err := c.aiClient.UploadFile(ctx, finalData, mimeType, displayName)
 	if err != nil {
 		return "", err
 	}
 
+	// URI（参照用）と Name（削除用）の両方をキャッシュ
 	if c.cache != nil {
 		c.cache.Set(cacheKeyURI, uri, c.expiration)
 		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)
@@ -72,14 +86,17 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	return uri, nil
 }
 
+// DeleteFile はキャッシュされたファイル名を使用して Gemini File API からファイルを削除します。
 func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
-	targetName := fileURI
 	if c.cache != nil {
 		if val, ok := c.cache.Get(cacheKeyFileAPIName + fileURI); ok {
 			if name, ok := val.(string); ok {
-				targetName = name
+				// 正しいファイル名 (files/xxxx) で削除を実行
+				return c.aiClient.DeleteFile(ctx, name)
 			}
 		}
 	}
-	return c.aiClient.DeleteFile(ctx, targetName)
+
+	// キャッシュミスした場合、URL 形式の fileURI では Delete API を叩けないためエラーを返す
+	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }

@@ -13,19 +13,14 @@ import (
 	"google.golang.org/genai"
 )
 
-func (c *GeminiImageCore) executeRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
-	gOpts := gemini.GenerateOptions{
-		AspectRatio:  opts.AspectRatio,
-		SystemPrompt: opts.SystemPrompt,
-		Seed:         opts.Seed,
-	}
-
-	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, gOpts)
+// ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。(ImageExecutor インターフェース実装)
+func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
+	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	out, err := c.parseToResponse(resp, dereferenceSeed(opts.Seed))
+	out, err := c.ParseToResponse(resp, dereferenceSeed(opts.Seed))
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +32,9 @@ func (c *GeminiImageCore) executeRequest(ctx context.Context, model string, part
 	}, nil
 }
 
-func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// File API キャッシュチェック
+// PrepareImagePart は URL または GCS パスから画像を準備し、genai.Part に変換します。(ImageExecutor インターフェース実装)
+func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
+	// 1. File API キャッシュチェック
 	if c.cache != nil {
 		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
 			if uri, ok := val.(string); ok {
@@ -47,11 +43,12 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 		}
 	}
 
-	// 取得と圧縮
+	// 2. 画像の取得と圧縮
 	data, err := c.fetchImageData(ctx, rawURL)
 	if err != nil {
 		return nil
 	}
+
 	finalData := data
 	if UseImageCompression {
 		if compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality); err == nil {
@@ -86,15 +83,32 @@ func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: data}}
 }
 
-func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
+// ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
+func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
 	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
-		return nil, fmt.Errorf("invalid response")
+		return nil, fmt.Errorf("invalid or empty response from Gemini")
 	}
+
 	candidate := resp.RawResponse.Candidates[0]
+
+	// FinishReasonの検証: 安全フィルターによるブロックや中断を正しくハンドリングする
+	if candidate.FinishReason != genai.FinishReasonStop && candidate.FinishReason != genai.FinishReasonUnspecified {
+		return nil, fmt.Errorf("generation failed with FinishReason: %s", candidate.FinishReason)
+	}
+
+	if candidate.Content == nil {
+		return nil, fmt.Errorf("no content found in candidate")
+	}
+
 	for _, part := range candidate.Content.Parts {
 		if part.InlineData != nil {
-			return &ImageOutput{Data: part.InlineData.Data, MimeType: part.InlineData.MIMEType, UsedSeed: seed}, nil
+			return &ImageOutput{
+				Data:     part.InlineData.Data,
+				MimeType: part.InlineData.MIMEType,
+				UsedSeed: seed,
+			}, nil
 		}
 	}
-	return nil, fmt.Errorf("no image data")
+
+	return nil, fmt.Errorf("no image data found in response parts")
 }

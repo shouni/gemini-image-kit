@@ -20,7 +20,7 @@ type AssetManager interface {
 	DeleteFile(ctx context.Context, fileURI string) error
 }
 
-type ImageGeneratorCore interface {
-	executeRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error)
-	prepareImagePart(ctx context.Context, rawURL string) *genai.Part
+type ImageExecutor interface {
+	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error)
+	PrepareImagePart(ctx context.Context, rawURL string) *genai.Part
 }

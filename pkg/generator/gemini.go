@@ -12,62 +12,85 @@ import (
 
 const negativePromptSeparator = "\n\n[Negative Prompt]\n"
 
+// GeminiGenerator は高レベルな画像生成ロジックを担当します。
 type GeminiGenerator struct {
 	model string
-	core  ImageGeneratorCore
+	core  ImageExecutor // インターフェースに依存し、密結合を解消
 }
 
-func NewGeminiGenerator(model string, core *GeminiImageCore) (*GeminiGenerator, error) {
+// NewGeminiGenerator は新しい GeminiGenerator を作成します。
+func NewGeminiGenerator(model string, core ImageExecutor) (*GeminiGenerator, error) {
 	if core == nil {
-		return nil, fmt.Errorf("core is required")
+		return nil, fmt.Errorf("core (ImageExecutor) is required")
 	}
 	return &GeminiGenerator{model: model, core: core}, nil
 }
 
+// GenerateMangaPanel は単一のパネル画像を生成します。
 func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
 	parts := []*genai.Part{{Text: buildFinalPrompt(req.Prompt, req.NegativePrompt)}}
 
+	// File API URI を優先し、なければ ReferenceURL (URL/GCS) を試行
 	if req.FileAPIURI != "" {
 		parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: req.FileAPIURI}})
 	} else if req.ReferenceURL != "" {
-		res := g.core.prepareImagePart(ctx, req.ReferenceURL)
-		parts = append(parts, res)
-	}
-
-	opts := g.toOptions(req.AspectRatio, req.SystemPrompt, req.Seed)
-	return g.core.executeRequest(ctx, g.model, parts, opts)
-}
-
-func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
-	parts := []*genai.Part{{Text: buildFinalPrompt(req.Prompt, req.NegativePrompt)}}
-
-	// File API URI を優先
-	for _, uri := range req.FileAPIURIs {
-		if uri != "" {
-			parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: uri}})
-		}
-	}
-
-	// URIがない場合のみフォールバック
-	if len(req.FileAPIURIs) == 0 {
-		for _, url := range req.ReferenceURLs {
-			res := g.core.prepareImagePart(ctx, url)
+		if res := g.core.PrepareImagePart(ctx, req.ReferenceURL); res != nil {
 			parts = append(parts, res)
 		}
 	}
 
 	opts := g.toOptions(req.AspectRatio, req.SystemPrompt, req.Seed)
-	return g.core.executeRequest(ctx, g.model, parts, opts)
+	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
+}
+
+// GenerateMangaPage は複数アセットを参照してページ（または複雑なパネル）画像を生成します。
+func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
+	parts := []*genai.Part{{Text: buildFinalPrompt(req.Prompt, req.NegativePrompt)}}
+
+	// 有効な File API URI が追加されたかどうかをフラグで管理
+	var hasValidFileAPIURI bool
+	for _, uri := range req.FileAPIURIs {
+		if uri != "" {
+			parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: uri}})
+			hasValidFileAPIURI = true
+		}
+	}
+
+	// 有効な File API URI が一つもなかった場合のみ、ReferenceURLs にフォールバック
+	if !hasValidFileAPIURI {
+		for _, url := range req.ReferenceURLs {
+			if url != "" {
+				if res := g.core.PrepareImagePart(ctx, url); res != nil {
+					parts = append(parts, res)
+				}
+			}
+		}
+	}
+
+	opts := g.toOptions(req.AspectRatio, req.SystemPrompt, req.Seed)
+	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
 }
 
 func (g *GeminiGenerator) toOptions(ar, sp string, seed *int64) gemini.GenerateOptions {
 	return gemini.GenerateOptions{AspectRatio: ar, SystemPrompt: sp, Seed: seed}
 }
 
+// buildFinalPrompt はプロンプトとネガティブプロンプトを安全に結合します。
 func buildFinalPrompt(prompt, negative string) string {
-	p, n := strings.TrimSpace(prompt), strings.TrimSpace(negative)
+	p := strings.TrimSpace(prompt)
+	n := strings.TrimSpace(negative)
+
+	if p == "" && n == "" {
+		return ""
+	}
 	if n == "" {
 		return p
 	}
-	return p + negativePromptSeparator + n
+
+	// strings.Builder を使用して効率的かつ明示的に構築
+	var sb strings.Builder
+	sb.WriteString(p)
+	sb.WriteString(negativePromptSeparator)
+	sb.WriteString(n)
+	return sb.String()
 }
