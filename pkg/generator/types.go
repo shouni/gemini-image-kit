@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
-	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+
+	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"google.golang.org/genai"
 )
 
@@ -19,6 +20,12 @@ type ImageGenerator interface {
 
 // ImageGeneratorCore は画像データの取得やパースなど、AI通信の前後処理を担うインターフェースなのだ。
 type ImageGeneratorCore interface {
+	// UploadFile は指定されたURIからデータを取得し、File APIへアップロードして、
+	// 生成された File API 上の URI (https://...) を返します。
+	UploadFile(ctx context.Context, fileURI string) (string, error)
+	// DeleteFile は指定されたパス（URI）のファイルを削除します。
+	DeleteFile(ctx context.Context, fileURI string) error
+
 	prepareImagePart(ctx context.Context, url string) *genai.Part
 	toPart(data []byte) *genai.Part
 	parseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error)

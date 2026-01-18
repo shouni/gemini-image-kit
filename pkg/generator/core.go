@@ -6,12 +6,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 
-	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
@@ -43,6 +44,7 @@ type ImageCacher interface {
 
 // GeminiImageCore は画像生成の基盤となるロジックを管理するのだ。
 type GeminiImageCore struct {
+	aiClient   gemini.GenerativeModel
 	reader     remoteio.InputReader
 	httpClient HTTPClient
 	cache      ImageCacher
@@ -50,7 +52,10 @@ type GeminiImageCore struct {
 }
 
 // NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返すのだ。
-func NewGeminiImageCore(reader remoteio.InputReader, client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+	if aiClient == nil {
+		return nil, fmt.Errorf("GenerativeModel は必須です")
+	}
 	if reader == nil {
 		return nil, fmt.Errorf("InputReader は必須です")
 	}
@@ -59,11 +64,83 @@ func NewGeminiImageCore(reader remoteio.InputReader, client HTTPClient, cache Im
 	}
 
 	return &GeminiImageCore{
+		aiClient:   aiClient,
 		reader:     reader,
 		httpClient: client,
 		cache:      cache,
 		expiration: cacheTTL,
 	}, nil
+}
+
+// UploadFile は URI（GCS/HTTP）からデータを取得し、Gemini File API へ転送します。
+// 戻り値として File API 上の URI を返します。
+// UploadFile は URI（GCS/HTTP）からデータを取得し、圧縮した上で Gemini File API へ転送します。
+func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
+	// 1. 重複アップロード防止のためのキャッシュチェック
+	cacheKeyURI := "fileapi_uri:" + fileURI
+	if c.cache != nil {
+		if val, ok := c.cache.Get(cacheKeyURI); ok {
+			if uri, ok := val.(string); ok {
+				slog.DebugContext(ctx, "キャッシュされた File API URI を再利用します", "source", fileURI, "uri", uri)
+				return uri, nil
+			}
+		}
+	}
+
+	// 2. 透過的なデータ取得 (GCS or HTTP)
+	data, err := c.fetchImageData(ctx, fileURI)
+	if err != nil {
+		return "", fmt.Errorf("ソースデータの取得に失敗 (%s): %w", fileURI, err)
+	}
+
+	// 3. アップロード前の圧縮処理
+	finalData := data
+	if UseImageCompression {
+		compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality)
+		if err != nil {
+			slog.WarnContext(ctx, "アップロード前の圧縮に失敗したためオリジナルを使用します", "error", err)
+		} else {
+			finalData = compressed
+			slog.DebugContext(ctx, "画像を圧縮してアップロード準備完了", "original", len(data), "compressed", len(finalData))
+		}
+	}
+
+	// 4. ライブラリ (package gemini) の UploadFile を呼び出し
+	mimeType := http.DetectContentType(finalData)
+	displayName := filepath.Base(fileURI)
+	uri, fileName, err := c.aiClient.UploadFile(ctx, finalData, mimeType, displayName)
+	if err != nil {
+		return "", fmt.Errorf("Gemini File API へのアップロードに失敗: %w", err)
+	}
+
+	// 5. 次回利用と削除のために情報をキャッシュ
+	if c.cache != nil {
+		c.cache.Set(cacheKeyURI, uri, c.expiration)
+		c.cache.Set("fileapi_name:"+fileURI, fileName, c.expiration)
+	}
+
+	slog.InfoContext(ctx, "File API への転送に成功しました",
+		"source", fileURI,
+		"gemini_uri", uri,
+	)
+
+	return uri, nil
+}
+
+// DeleteFile は元の URI または管理名(fileName)を指定して削除を実行します。
+func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
+	targetName := fileURI
+
+	// キャッシュに管理名 (files/...) があればそちらを優先
+	if c.cache != nil {
+		if val, ok := c.cache.Get("fileapi_name:" + fileURI); ok {
+			if name, ok := val.(string); ok {
+				targetName = name
+			}
+		}
+	}
+
+	return c.aiClient.DeleteFile(ctx, targetName)
 }
 
 // PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換するなのだ。

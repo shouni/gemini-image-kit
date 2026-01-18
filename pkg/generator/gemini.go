@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
-	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"google.golang.org/genai"
 )
 
@@ -95,10 +95,10 @@ func (g *GeminiGenerator) generateInternal(
 	seed *int64,
 ) (*domain.ImageResponse, error) {
 
-	opts := gemini.ImageOptions{
+	opts := gemini.GenerateOptions{
 		AspectRatio:  aspectRatio,
 		SystemPrompt: systemPrompt,
-		Seed:         seedToPtrInt32(seed),
+		Seed:         seed,
 	}
 
 	resp, err := g.aiClient.GenerateWithParts(ctx, g.model, parts, opts)
