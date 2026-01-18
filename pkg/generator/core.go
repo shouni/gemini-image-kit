@@ -18,31 +18,35 @@ import (
 )
 
 const (
-	// UseImageCompression は画像を送信前に圧縮するかどうかのフラグなのだ
+	// UseImageCompression は画像を送信前に圧縮するかどうかのフラグ
 	UseImageCompression = true
-	// ImageCompressionQuality は JPEG 圧縮の品質（1-100）なのだ
+	// ImageCompressionQuality は JPEG 圧縮の品質（1-100）
 	ImageCompressionQuality = 75
+
+	// キャッシュキー用のプレフィックス定数
+	cacheKeyFileAPIURI  = "fileapi_uri:"
+	cacheKeyFileAPIName = "fileapi_name:"
 )
 
-// ImageOutput は Core が解析した結果を保持する内部構造体なのだ。
+// ImageOutput は Core が解析した結果を保持する内部構造体
 type ImageOutput struct {
 	Data     []byte
 	MimeType string
 	UsedSeed int64
 }
 
-// HTTPClient は画像取得に必要な最小限のインターフェースなのだ。
+// HTTPClient は画像取得に必要な最小限のインターフェース
 type HTTPClient interface {
 	FetchBytes(ctx context.Context, url string) ([]byte, error)
 }
 
-// ImageCacher は画像のキャッシュを担当するインターフェースなのだ。
+// ImageCacher は画像のキャッシュを担当するインターフェース
 type ImageCacher interface {
 	Get(key string) (any, bool)
 	Set(key string, value any, d time.Duration)
 }
 
-// GeminiImageCore は画像生成の基盤となるロジックを管理するのだ。
+// GeminiImageCore は画像生成の基盤となるロジックを管理する
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
 	reader     remoteio.InputReader
@@ -51,7 +55,7 @@ type GeminiImageCore struct {
 	expiration time.Duration
 }
 
-// NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返すのだ。
+// NewGeminiImageCore は、画像操作を処理するための GeminiImageCore インスタンスを初期化して返す
 func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
 	if aiClient == nil {
 		return nil, fmt.Errorf("GenerativeModel は必須です")
@@ -72,12 +76,11 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	}, nil
 }
 
-// UploadFile は URI（GCS/HTTP）からデータを取得し、Gemini File API へ転送します。
-// 戻り値として File API 上の URI を返します。
-// UploadFile は URI（GCS/HTTP）からデータを取得し、圧縮した上で Gemini File API へ転送します。
+// UploadFile は URI（GCS/HTTP）からデータを取得し、必要に応じて圧縮した上で Gemini File API へ転送します。
+// 成功した場合、File API 上の URI を返します。
 func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
 	// 1. 重複アップロード防止のためのキャッシュチェック
-	cacheKeyURI := "fileapi_uri:" + fileURI
+	cacheKeyURI := cacheKeyFileAPIURI + fileURI
 	if c.cache != nil {
 		if val, ok := c.cache.Get(cacheKeyURI); ok {
 			if uri, ok := val.(string); ok {
@@ -116,7 +119,7 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	// 5. 次回利用と削除のために情報をキャッシュ
 	if c.cache != nil {
 		c.cache.Set(cacheKeyURI, uri, c.expiration)
-		c.cache.Set("fileapi_name:"+fileURI, fileName, c.expiration)
+		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)
 	}
 
 	slog.InfoContext(ctx, "File API への転送に成功しました",
@@ -127,13 +130,13 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	return uri, nil
 }
 
-// DeleteFile は元の URI または管理名(fileName)を指定して削除を実行します。
+// DeleteFile は元の URI に紐付いた File API オブジェクトを削除します。
 func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
 	targetName := fileURI
 
 	// キャッシュに管理名 (files/...) があればそちらを優先
 	if c.cache != nil {
-		if val, ok := c.cache.Get("fileapi_name:" + fileURI); ok {
+		if val, ok := c.cache.Get(cacheKeyFileAPIName + fileURI); ok {
 			if name, ok := val.(string); ok {
 				targetName = name
 			}
@@ -143,44 +146,57 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 	return c.aiClient.DeleteFile(ctx, targetName)
 }
 
-// PrepareImagePart は URL から画像を準備し、インラインデータ形式の Part に変換するなのだ。
+// prepareImagePart は URL から画像を準備し、最適な Part 形式（FileData または InlineData）に変換します。
 func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// 1. 安全チェック
+	// 1. 安全チェック (別ファイルで定義されていることを想定)
 	if safe, err := IsSafeURL(rawURL); !safe {
 		slog.WarnContext(ctx, "SSRFの可能性がある、または不正なURLをブロックしました", "url", rawURL, "error", err)
 		return nil
 	}
 
-	// 2. キャッシュチェック
+	// 2. File API キャッシュチェック (アップロード済みなら URI を参照)
+	if c.cache != nil {
+		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
+			if uri, ok := val.(string); ok {
+				slog.DebugContext(ctx, "File API URI を参照します", "url", rawURL)
+				return &genai.Part{
+					FileData: &genai.FileData{
+						FileURI: uri,
+					},
+				}
+			}
+		}
+	}
+
+	// 3. インラインデータ用のキャッシュチェック
 	if c.cache != nil {
 		if val, ok := c.cache.Get(rawURL); ok {
 			if data, ok := val.([]byte); ok {
-				slog.DebugContext(ctx, "キャッシュされた画像データを使用するのだ", "url", rawURL)
+				slog.DebugContext(ctx, "キャッシュされた画像データを使用します", "url", rawURL)
 				return c.toPart(data)
 			}
 		}
 	}
 
-	// 3. データ取得
+	// 4. データ取得
 	data, err := c.fetchImageData(ctx, rawURL)
 	if err != nil {
-		slog.ErrorContext(ctx, "画像の取得に失敗したのだ", "url", rawURL, "error", err)
+		slog.ErrorContext(ctx, "画像の取得に失敗しました", "url", rawURL, "error", err)
 		return nil
 	}
 
-	// 4. フラグに基づいた圧縮処理
+	// 5. フラグに基づいた圧縮処理
 	finalData := data
 	if UseImageCompression {
 		compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality)
 		if err != nil {
-			slog.WarnContext(ctx, "圧縮に失敗したためオリジナルを使用するのだ", "error", err)
+			slog.WarnContext(ctx, "圧縮に失敗したためオリジナルを使用します", "error", err)
 		} else {
 			finalData = compressed
-			slog.DebugContext(ctx, "画像を圧縮したのだ", "original_size", len(data), "new_size", len(finalData))
 		}
 	}
 
-	// 5. キャッシュ保存
+	// 6. キャッシュ保存
 	if c.cache != nil {
 		c.cache.Set(rawURL, finalData, c.expiration)
 	}
@@ -188,7 +204,7 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 	return c.toPart(finalData)
 }
 
-// fetchImageData は URL スキームに基づいて適切な取得方法を選択するのだ。
+// fetchImageData は URL スキームに基づいて適切な取得方法を選択します。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
 	if strings.HasPrefix(rawURL, "gs://") {
 		return c.fetchFromGCS(ctx, rawURL)
@@ -197,7 +213,7 @@ func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]
 	return c.httpClient.FetchBytes(ctx, rawURL)
 }
 
-// fetchFromGCS は GCS からのデータ取得に特化したメソッドなのだ。
+// fetchFromGCS は GCS からのデータ取得に特化したメソッドです。
 func (c *GeminiImageCore) fetchFromGCS(ctx context.Context, url string) ([]byte, error) {
 	slog.DebugContext(ctx, "GCSから画像を取得", "url", url)
 	rc, err := c.reader.Open(ctx, url)
@@ -213,7 +229,7 @@ func (c *GeminiImageCore) fetchFromGCS(ctx context.Context, url string) ([]byte,
 	return data, nil
 }
 
-// toPart はバイナリデータを MIME タイプ付きの InlineData Part に変換するのだ。
+// toPart はバイナリデータを MIME タイプ付きの InlineData Part に変換します。
 func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	mimeType := http.DetectContentType(data)
 	if !strings.HasPrefix(mimeType, "image/") {
@@ -227,7 +243,7 @@ func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	}
 }
 
-// parseToResponse は Gemini のレスポンスから画像データを抽出するのだ。
+// parseToResponse は Gemini のレスポンスから画像データを抽出します。
 func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
 	if resp == nil || resp.RawResponse == nil {
 		return nil, fmt.Errorf("empty response from Gemini")
