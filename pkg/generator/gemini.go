@@ -45,7 +45,11 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 
 // GenerateMangaPage は複数アセットを参照してページ（または複雑なパネル）画像を生成します。
 func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
-	parts := []*genai.Part{{Text: buildFinalPrompt(req.Prompt, req.NegativePrompt)}}
+	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
+	if finalPrompt == "" {
+		return nil, fmt.Errorf("prompt cannot be empty")
+	}
+	parts := []*genai.Part{{Text: finalPrompt}}
 
 	// 有効な File API URI が追加されたかどうかをフラグで管理
 	var hasValidFileAPIURI bool
