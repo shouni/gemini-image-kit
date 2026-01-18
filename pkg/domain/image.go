@@ -1,13 +1,13 @@
 package domain
 
 // ImageGenerationRequest は単一の画像生成要求です。
-// Seed を *int32 にすることで Gemini SDK との直結を優先しています。
 type ImageGenerationRequest struct {
 	Prompt         string
 	SystemPrompt   string
 	NegativePrompt string
 	AspectRatio    string
-	ReferenceURL   string
+	ReferenceURL   string // 元の参照先 (GCS, HTTP等)
+	FileAPIURI     string // Gemini File API 上の URI (https://...) ★追加
 	Seed           *int64
 }
 
@@ -17,7 +17,8 @@ type ImagePageRequest struct {
 	SystemPrompt   string
 	NegativePrompt string
 	AspectRatio    string
-	ReferenceURLs  []string
+	ReferenceURLs  []string // 元の参照先リスト
+	FileAPIURIs    []string // Gemini File API 上の URI リスト ★追加
 	Seed           *int64
 }
 
@@ -25,5 +26,5 @@ type ImagePageRequest struct {
 type ImageResponse struct {
 	Data     []byte
 	MimeType string
-	UsedSeed int64 // 戻り値は情報欠落を防ぐため int64
+	UsedSeed int64
 }

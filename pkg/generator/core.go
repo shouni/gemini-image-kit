@@ -204,31 +204,6 @@ func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *
 	return c.toPart(finalData)
 }
 
-// fetchImageData は URL スキームに基づいて適切な取得方法を選択します。
-func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
-	if strings.HasPrefix(rawURL, "gs://") {
-		return c.fetchFromGCS(ctx, rawURL)
-	}
-
-	return c.httpClient.FetchBytes(ctx, rawURL)
-}
-
-// fetchFromGCS は GCS からのデータ取得に特化したメソッドです。
-func (c *GeminiImageCore) fetchFromGCS(ctx context.Context, url string) ([]byte, error) {
-	slog.DebugContext(ctx, "GCSから画像を取得", "url", url)
-	rc, err := c.reader.Open(ctx, url)
-	if err != nil {
-		return nil, fmt.Errorf("GCSファイルのオープンに失敗: %w", err)
-	}
-	defer rc.Close()
-
-	data, err := io.ReadAll(rc)
-	if err != nil {
-		return nil, fmt.Errorf("GCSファイルの読み取りに失敗: %w", err)
-	}
-	return data, nil
-}
-
 // toPart はバイナリデータを MIME タイプ付きの InlineData Part に変換します。
 func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	mimeType := http.DetectContentType(data)
@@ -274,4 +249,29 @@ func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	return nil, fmt.Errorf("no image data found in response parts")
+}
+
+// fetchImageData は URL スキームに基づいて適切な取得方法を選択します。
+func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
+	if strings.HasPrefix(rawURL, "gs://") {
+		return c.fetchFromGCS(ctx, rawURL)
+	}
+
+	return c.httpClient.FetchBytes(ctx, rawURL)
+}
+
+// fetchFromGCS は GCS からのデータ取得に特化したメソッドです。
+func (c *GeminiImageCore) fetchFromGCS(ctx context.Context, url string) ([]byte, error) {
+	slog.DebugContext(ctx, "GCSから画像を取得", "url", url)
+	rc, err := c.reader.Open(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("GCSファイルのオープンに失敗: %w", err)
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("GCSファイルの読み取りに失敗: %w", err)
+	}
+	return data, nil
 }
