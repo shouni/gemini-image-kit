@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
+	"github.com/shouni/go-gemini-client/pkg/gemini"
+	"google.golang.org/genai"
 )
 
 // ImageGenerator はビジネスロジック層が利用する統合窓口です。
@@ -16,4 +18,9 @@ type ImageGenerator interface {
 type AssetManager interface {
 	UploadFile(ctx context.Context, fileURI string) (string, error)
 	DeleteFile(ctx context.Context, fileURI string) error
+}
+
+type ImageGeneratorCore interface {
+	executeRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error)
+	prepareImagePart(ctx context.Context, rawURL string) *genai.Part
 }

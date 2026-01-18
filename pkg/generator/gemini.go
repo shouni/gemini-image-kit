@@ -14,7 +14,7 @@ const negativePromptSeparator = "\n\n[Negative Prompt]\n"
 
 type GeminiGenerator struct {
 	model string
-	core  *GeminiImageCore // インターフェースではなく具象型にする
+	core  ImageGeneratorCore
 }
 
 func NewGeminiGenerator(model string, core *GeminiImageCore) (*GeminiGenerator, error) {
