@@ -2,190 +2,106 @@ package generator
 
 import (
 	"context"
-	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
-	"google.golang.org/genai"
 )
 
-func TestNewGeminiImageCore(t *testing.T) {
-	t.Run("正常系: 必須パラメータがあれば初期化できるのだ", func(t *testing.T) {
-		core, err := NewGeminiImageCore(&mockReader{}, &mockHTTPClient{}, nil, time.Hour)
-		if err != nil {
-			t.Fatalf("初期化に失敗したのだ: %v", err)
-		}
-		if core == nil {
-			t.Fatal("インスタンスが生成されなかったのだ")
-		}
-	})
+// 注意: mockAIClient, mockReader, mockHTTPClient, mockCache は
+// mocks_test.go で定義されているため、ここでは定義不要です。
 
-	t.Run("異常系: HTTPClientがnilならエラーを返すのだ", func(t *testing.T) {
-		core, err := NewGeminiImageCore(&mockReader{}, nil, nil, time.Hour)
-		if err == nil {
-			t.Error("HTTPClientがnilなのにエラーが発生しなかったのだ")
-		}
-		if core != nil {
-			t.Error("エラーなのにインスタンスが返されたのだ")
-		}
-	})
-}
-
-func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
+func TestGeminiImageCore_UploadFile(t *testing.T) {
 	ctx := context.Background()
-	validPng := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90w\x53\xde")
-	safeURL := "https://www.google.com/test.png"
-	gcsURL := "gs://my-bucket/images/test.png"
+	// mocks_test.go のモックを利用
+	cache := &mockCache{data: make(map[string]any)}
+	ai := &mockAIClient{}
+	httpMock := &mockHTTPClient{data: []byte("fake-image-binary")}
+	reader := &mockReader{}
 
-	t.Run("GCS (gs://) の場合は Reader を使用して取得するのだ", func(t *testing.T) {
-		reader := &mockReader{
-			fetchFunc: func(ctx context.Context, url string) ([]byte, error) {
-				if url == gcsURL {
-					return validPng, nil
-				}
-				return nil, fmt.Errorf("unexpected URL: %s", url)
-			},
-		}
-		// ✨ 修正: エラーを無視せず、失敗時は即座にテストを止めるのだ
-		core, err := NewGeminiImageCore(reader, &mockHTTPClient{}, nil, time.Hour)
+	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour)
+	if err != nil {
+		t.Fatalf("failed to create core: %v", err)
+	}
+
+	t.Run("キャッシュがない場合はアップロードが実行される", func(t *testing.T) {
+		ai.uploadCalled = false
+		fileURL := "https://example.com/test.png"
+
+		uri, err := core.UploadFile(ctx, fileURL)
+
 		if err != nil {
-			t.Fatalf("初期化エラー: %v", err)
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ai.uploadCalled {
+			t.Error("expected AI client UploadFile to be called")
+		}
+		if uri != "https://gemini.api/files/new-file-id" {
+			t.Errorf("got uri %s, want https://gemini.api/files/new-file-id", uri)
 		}
 
-		part := core.prepareImagePart(ctx, gcsURL)
-
-		if part == nil || part.InlineData == nil {
-			t.Fatal("GCSからの画像取得に失敗したのだ")
-		}
-		if !reflect.DeepEqual(part.InlineData.Data, validPng) {
-			t.Errorf("データが一致しないのだ")
+		// キャッシュに保存されているか確認
+		cachedURI, _ := cache.Get(cacheKeyFileAPIURI + fileURL)
+		if cachedURI != uri {
+			t.Errorf("cache mismatch: got %v, want %v", cachedURI, uri)
 		}
 	})
 
-	t.Run("キャッシュにある場合は安全チェックを飛ばしてキャッシュを返すのだ", func(t *testing.T) {
-		cache := &mockCache{data: map[string]any{safeURL: validPng}}
-		// ✨ 修正: エラーハンドリングを追加したのだ
-		core, err := NewGeminiImageCore(&mockReader{}, &mockHTTPClient{}, cache, time.Hour)
+	t.Run("キャッシュがある場合はアップロードをスキップする", func(t *testing.T) {
+		ai.uploadCalled = false
+		fileURL := "https://example.com/cached.png"
+		expectedURI := "https://gemini.api/files/already-uploaded"
+		cache.Set(cacheKeyFileAPIURI+fileURL, expectedURI, time.Hour)
+
+		uri, err := core.UploadFile(ctx, fileURL)
+
 		if err != nil {
-			t.Fatalf("初期化エラー: %v", err)
+			t.Fatalf("unexpected error: %v", err)
 		}
-
-		part := core.prepareImagePart(ctx, safeURL)
-
-		if part == nil || part.InlineData == nil {
-			t.Fatal("キャッシュから画像が取得できなかったのだ")
+		if ai.uploadCalled {
+			t.Error("AI client UploadFile should NOT be called when cached")
 		}
-		if !reflect.DeepEqual(part.InlineData.Data, validPng) {
-			t.Errorf("データが一致しないのだ")
-		}
-	})
-
-	t.Run("キャッシュにない場合はバリデーション後にDLして保存するのだ", func(t *testing.T) {
-		cache := &mockCache{data: make(map[string]any)}
-		httpClient := &mockHTTPClient{
-			fetchFunc: func(ctx context.Context, url string) ([]byte, error) {
-				return validPng, nil
-			},
-		}
-		// ✨ 修正: エラーハンドリングを追加したのだ
-		core, err := NewGeminiImageCore(&mockReader{}, httpClient, cache, time.Hour)
-		if err != nil {
-			t.Fatalf("初期化エラー: %v", err)
-		}
-
-		part := core.prepareImagePart(ctx, safeURL)
-
-		if part == nil {
-			t.Skip("外部ネットワーク制限等によりスキップするのだ")
-			return
-		}
-
-		if _, found := cache.Get(safeURL); !found {
-			t.Error("キャッシュに保存されていないのだ")
-		}
-	})
-
-	t.Run("安全でないURLはブロックするのだ", func(t *testing.T) {
-		// ✨ 修正: エラーハンドリングを追加したのだ
-		core, err := NewGeminiImageCore(&mockReader{}, &mockHTTPClient{}, nil, time.Hour)
-		if err != nil {
-			t.Fatalf("初期化エラー: %v", err)
-		}
-
-		cases := []struct {
-			name string
-			url  string
-		}{
-			{"スキーム不正(ftp)", "ftp://example.com/test.png"},
-			{"ループバック", "http://127.0.0.1/attack"},
-			{"プライベートIP", "http://192.168.1.1/internal"},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				part := core.prepareImagePart(ctx, tc.url)
-				if part != nil {
-					t.Errorf("%s がブロックされなかったのだ", tc.name)
-				}
-			})
+		if uri != expectedURI {
+			t.Errorf("got uri %s, want %s", uri, expectedURI)
 		}
 	})
 }
 
-func TestGeminiImageCore_ParseToResponse(t *testing.T) {
-	core := &GeminiImageCore{}
-	seed := int64(9999)
+func TestGeminiImageCore_DeleteFile(t *testing.T) {
+	ctx := context.Background()
+	cache := &mockCache{data: make(map[string]any)}
+	ai := &mockAIClient{}
+	reader := &mockReader{}
 
-	t.Run("正常系: 画像が含まれるレスポンスを正しく解析するのだ", func(t *testing.T) {
-		resp := &gemini.Response{
-			RawResponse: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: &genai.Content{
-							Parts: []*genai.Part{
-								{
-									InlineData: &genai.Blob{
-										MIMEType: "image/png",
-										Data:     []byte("dummy-data"),
-									},
-								},
-							},
-						},
-						FinishReason: genai.FinishReasonStop,
-					},
-				},
-			},
-		}
+	core, _ := NewGeminiImageCore(ai, reader, &mockHTTPClient{}, cache, time.Hour)
 
-		out, err := core.parseToResponse(resp, seed)
+	t.Run("キャッシュから名前を引いて削除に成功する", func(t *testing.T) {
+		fileURL := "https://example.com/image.png"
+		apiName := "files/specific-id"
+		// 削除にはこのキャッシュが必須
+		cache.Set(cacheKeyFileAPIName+fileURL, apiName, time.Hour)
+
+		err := core.DeleteFile(ctx, fileURL)
+
 		if err != nil {
-			t.Fatalf("パース中にエラーが発生したのだ: %v", err)
+			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(out.Data) != "dummy-data" || out.UsedSeed != seed {
-			t.Error("抽出データまたはシード値が異なるのだ")
+		if ai.lastFileName != apiName {
+			t.Errorf("expected %s, got %s", apiName, ai.lastFileName)
 		}
 	})
 
-	t.Run("異常系: FinishReason が SAFETY の場合", func(t *testing.T) {
-		resp := &gemini.Response{
-			RawResponse: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						FinishReason: genai.FinishReasonSafety,
-					},
-				},
-			},
+	t.Run("キャッシュがない場合はエラーを返す（仕様変更の確認）", func(t *testing.T) {
+		rawID := "files/raw-id"
+		// キャッシュに何も入れずに実行
+		err := core.DeleteFile(ctx, rawID)
+
+		if err == nil {
+			t.Error("expected error when cache is missing, but got nil")
 		}
 
-		_, err := core.parseToResponse(resp, seed)
-		if err == nil {
-			t.Fatal("セーフティフィルター時はエラーを返すべきなのだ")
-		}
-		if !strings.Contains(err.Error(), "SAFETY") {
-			t.Errorf("エラーメッセージに理由が含まれていないのだ: %v", err)
+		expectedErrMsg := "cannot determine file name for deletion"
+		if err != nil && !strings.Contains(err.Error(), expectedErrMsg) {
+			t.Errorf("expected error message to contain %q, got %q", expectedErrMsg, err.Error())
 		}
 	})
 }

@@ -1,124 +1,83 @@
 package generator
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"time"
 
-	"github.com/shouni/go-ai-client/v2/pkg/ai/gemini"
+	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"google.golang.org/genai"
 )
 
-// ----------------------------------------------------------------------
-// mockReader: remoteio.InputReader のモック
-// ----------------------------------------------------------------------
+// --- Mocks ---
 
-type mockReader struct {
-	fetchFunc func(ctx context.Context, url string) ([]byte, error)
+type mockAIClient struct {
+	uploadCalled bool
+	deleteCalled bool
+	lastFileName string
 }
 
-func (m *mockReader) Open(ctx context.Context, name string) (io.ReadCloser, error) {
-	if m.fetchFunc != nil {
-		data, err := m.fetchFunc(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-		return io.NopCloser(bytes.NewReader(data)), nil
-	}
-	return nil, io.EOF
+func (m *mockAIClient) UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error) {
+	m.uploadCalled = true
+	return "https://gemini.api/files/new-file-id", "files/new-file-id", nil
 }
 
-// ----------------------------------------------------------------------
-// mockHTTPClient: HTTPClient のモック
-// ----------------------------------------------------------------------
-
-type mockHTTPClient struct {
-	fetchFunc func(ctx context.Context, url string) ([]byte, error)
+func (m *mockAIClient) DeleteFile(ctx context.Context, name string) error {
+	m.deleteCalled = true
+	m.lastFileName = name
+	return nil
 }
 
-func (m *mockHTTPClient) FetchBytes(ctx context.Context, url string) ([]byte, error) {
-	if m.fetchFunc != nil {
-		return m.fetchFunc(ctx, url)
-	}
+func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt string) (*gemini.Response, error) {
 	return nil, nil
 }
 
-// ----------------------------------------------------------------------
-// mockCache: ImageCacher のモック
-// ----------------------------------------------------------------------
+func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
+	return &gemini.Response{
+		RawResponse: &genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{{
+				Content: &genai.Content{
+					Parts: []*genai.Part{{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("fake")}}},
+				},
+			}},
+		},
+	}, nil
+}
+
+func (m *mockAIClient) GetFile(ctx context.Context, name string) (*genai.File, error) {
+	return nil, nil
+}
+
+// mockReader の修正: List メソッドをコールバック形式に変更
+type mockReader struct{}
+
+func (m *mockReader) Open(ctx context.Context, uri string) (io.ReadCloser, error) {
+	return nil, nil
+}
+
+// エラー内容に合わせ、シグネチャを修正しました
+func (m *mockReader) List(ctx context.Context, uri string, fn func(string) error) error {
+	return nil
+}
+
+type mockHTTPClient struct {
+	data []byte
+	err  error
+}
+
+func (m *mockHTTPClient) FetchBytes(ctx context.Context, url string) ([]byte, error) {
+	return m.data, m.err
+}
 
 type mockCache struct {
 	data map[string]any
 }
 
 func (m *mockCache) Get(key string) (any, bool) {
-	if m.data == nil {
-		return nil, false
-	}
-	v, ok := m.data[key]
-	return v, ok
+	val, ok := m.data[key]
+	return val, ok
 }
 
 func (m *mockCache) Set(key string, value any, d time.Duration) {
-	if m.data == nil {
-		m.data = make(map[string]any)
-	}
 	m.data[key] = value
 }
-
-// ----------------------------------------------------------------------
-// mockImageCore: ImageGeneratorCore のモック (上位層向け)
-// ----------------------------------------------------------------------
-
-type mockImageCore struct {
-	prepareFunc func(ctx context.Context, url string) *genai.Part
-	toPartFunc  func(data []byte) *genai.Part
-	parseFunc   func(resp *gemini.Response, seed int64) (*ImageOutput, error)
-}
-
-func (m *mockImageCore) PrepareImagePart(ctx context.Context, url string) *genai.Part {
-	if m.prepareFunc != nil {
-		return m.prepareFunc(ctx, url)
-	}
-	return nil
-}
-
-func (m *mockImageCore) ToPart(data []byte) *genai.Part {
-	if m.toPartFunc != nil {
-		return m.toPartFunc(data)
-	}
-	return nil
-}
-
-func (m *mockImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
-	if m.parseFunc != nil {
-		return m.parseFunc(resp, seed)
-	}
-	return nil, nil
-}
-
-// ----------------------------------------------------------------------
-// mockAIClient: gemini.GenerativeModel のモック
-// ----------------------------------------------------------------------
-
-type mockAIClient struct {
-	generateWithPartsFunc func(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error)
-	generateContentFunc   func(ctx context.Context, model string, prompt string) (*gemini.Response, error)
-}
-
-func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, parts []*genai.Part, opts gemini.ImageOptions) (*gemini.Response, error) {
-	if m.generateWithPartsFunc != nil {
-		return m.generateWithPartsFunc(ctx, model, parts, opts)
-	}
-	return nil, nil
-}
-
-func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt string) (*gemini.Response, error) {
-	if m.generateContentFunc != nil {
-		return m.generateContentFunc(ctx, model, prompt)
-	}
-	return nil, nil
-}
-
-func (m *mockAIClient) Close() error { return nil }
