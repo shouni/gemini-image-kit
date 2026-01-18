@@ -7,12 +7,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
-	"google.golang.org/genai"
 )
 
 // GeminiImageCore は AssetManager と ImageGeneratorCore の両方を実装します。
@@ -84,53 +82,4 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 		}
 	}
 	return c.aiClient.DeleteFile(ctx, targetName)
-}
-
-func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
-	gOpts := gemini.GenerateOptions{
-		AspectRatio:  opts.AspectRatio,
-		SystemPrompt: opts.SystemPrompt,
-		Seed:         opts.Seed,
-	}
-
-	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, gOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	out, err := c.parseToResponse(resp, c.dereferenceSeed(opts.Seed))
-	if err != nil {
-		return nil, err
-	}
-
-	return &domain.ImageResponse{
-		Data:     out.Data,
-		MimeType: out.MimeType,
-		UsedSeed: out.UsedSeed,
-	}, nil
-}
-
-func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// File API キャッシュチェック
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
-			if uri, ok := val.(string); ok {
-				return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
-			}
-		}
-	}
-
-	// 取得と圧縮
-	data, err := c.fetchImageData(ctx, rawURL)
-	if err != nil {
-		return nil
-	}
-	finalData := data
-	if UseImageCompression {
-		if compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality); err == nil {
-			finalData = compressed
-		}
-	}
-
-	return c.toPart(finalData)
 }

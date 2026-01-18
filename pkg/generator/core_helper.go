@@ -7,11 +7,66 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/shouni/gemini-image-kit/pkg/domain"
+	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"google.golang.org/genai"
 )
 
+func (c *GeminiImageCore) executeRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
+	gOpts := gemini.GenerateOptions{
+		AspectRatio:  opts.AspectRatio,
+		SystemPrompt: opts.SystemPrompt,
+		Seed:         opts.Seed,
+	}
+
+	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, gOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := c.parseToResponse(resp, dereferenceSeed(opts.Seed))
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.ImageResponse{
+		Data:     out.Data,
+		MimeType: out.MimeType,
+		UsedSeed: out.UsedSeed,
+	}, nil
+}
+
+func (c *GeminiImageCore) prepareImagePart(ctx context.Context, rawURL string) *genai.Part {
+	// File API キャッシュチェック
+	if c.cache != nil {
+		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
+			if uri, ok := val.(string); ok {
+				return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
+			}
+		}
+	}
+
+	// 取得と圧縮
+	data, err := c.fetchImageData(ctx, rawURL)
+	if err != nil {
+		return nil
+	}
+	finalData := data
+	if UseImageCompression {
+		if compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality); err == nil {
+			finalData = compressed
+		}
+	}
+
+	return c.toPart(finalData)
+}
+
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
+	if safe, err := IsSafeURL(rawURL); err != nil || !safe {
+		return nil, fmt.Errorf("安全ではないURLが指定されました: %w", err)
+	}
+
 	if strings.HasPrefix(rawURL, "gs://") {
 		rc, err := c.reader.Open(ctx, rawURL)
 		if err != nil {
@@ -42,11 +97,4 @@ func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*I
 		}
 	}
 	return nil, fmt.Errorf("no image data")
-}
-
-func (c *GeminiImageCore) dereferenceSeed(seed *int64) int64 {
-	if seed == nil {
-		return 0
-	}
-	return *seed
 }

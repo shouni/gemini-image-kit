@@ -30,12 +30,12 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 	if req.FileAPIURI != "" {
 		parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: req.FileAPIURI}})
 	} else if req.ReferenceURL != "" {
-		res := g.core.PrepareImagePart(ctx, req.ReferenceURL)
+		res := g.core.prepareImagePart(ctx, req.ReferenceURL)
 		parts = append(parts, res)
 	}
 
 	opts := g.toOptions(req.AspectRatio, req.SystemPrompt, req.Seed)
-	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
+	return g.core.executeRequest(ctx, g.model, parts, opts)
 }
 
 func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
@@ -51,13 +51,13 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 	// URIがない場合のみフォールバック
 	if len(req.FileAPIURIs) == 0 {
 		for _, url := range req.ReferenceURLs {
-			res := g.core.PrepareImagePart(ctx, url)
+			res := g.core.prepareImagePart(ctx, url)
 			parts = append(parts, res)
 		}
 	}
 
 	opts := g.toOptions(req.AspectRatio, req.SystemPrompt, req.Seed)
-	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
+	return g.core.executeRequest(ctx, g.model, parts, opts)
 }
 
 func (g *GeminiGenerator) toOptions(ar, sp string, seed *int64) gemini.GenerateOptions {

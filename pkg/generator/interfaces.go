@@ -17,9 +17,3 @@ type AssetManager interface {
 	UploadFile(ctx context.Context, fileURI string) (string, error)
 	DeleteFile(ctx context.Context, fileURI string) error
 }
-
-//// ImageGeneratorCore は AI モデルとの具体的な通信とデータ変換を担当します。
-//type ImageGeneratorCore interface {
-//	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error)
-//	PrepareImagePart(ctx context.Context, url string) (*genai.Part, error)
-//}
