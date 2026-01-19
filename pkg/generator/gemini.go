@@ -75,6 +75,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
 }
 
+// toOptions は、引数を基に gemini.GenerateOptions を生成します。
 func (g *GeminiGenerator) toOptions(ar, sp string, seed *int64) gemini.GenerateOptions {
 	return gemini.GenerateOptions{AspectRatio: ar, SystemPrompt: sp, Seed: seed}
 }

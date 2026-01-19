@@ -80,15 +80,17 @@ resp, err := gen.GenerateMangaPage(ctx, req)
 
 ```text
 pkg/
-├── domain/            # 共通ドメインモデル（リクエスト・レスポンス定義）
-├── generator/         # 画像生成コアロジック
-│   ├── interfaces.go  # ImageExecutor 等の抽象化インターフェース
-│   ├── gemini.go      # 高レベルジェネレーター（プロンプト構築・フォールバック）
-│   ├── core.go        # File API 操作（Upload/Delete）とライフサイクル管理
-│   ├── core_helper.go # 画像取得・パース・バリデーション
-│   ├── types.go       # パッケージ内部用型定義
-│   └── util.go        # SSRF対策・シード値変換・URL検証
-└── imgutil/           # 画像処理（圧縮・リサイズ）ユーティリティ
+├── domain/            # 共通ドメインモデル
+│   └── image.go       # リクエスト（Prompt/AspectRatio等）とレスポンスの型定義
+├── generator/         # 画像生成のコアロジック
+│   ├── interfaces.go  # ImageExecutor / ImageCacher / HTTPClient 等の抽象化定義
+│   ├── gemini.go      # 高レベルジェネレーター（プロンプト構築・フォールバック制御）
+│   ├── core.go        # GeminiImageCore（File API のライフサイクルとアップロード管理）
+│   ├── core_helper.go # 画像データのフェッチ・パース・SSRFバリデーション
+│   ├── util.go        # SSRF対策バリデータ・シード値変換等の共通ユーティリティ
+│   └── types.go       # パッケージ内部用定数・型定義
+└── imgutil/           # 画像処理ユーティリティ
+    └── compressor.go  # 送信前画像圧縮（JPEG最適化）ロジック
 
 ```
 
