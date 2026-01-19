@@ -59,6 +59,8 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	return c.toPart(finalData)
 }
 
+// fetchImageData 指定された URL または GCS パスから画像データを取得します。
+// URL が安全であることを確認し、GCS からデータを読み取るか、HTTP 経由で取得します。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
 	if safe, err := IsSafeURL(rawURL); err != nil || !safe {
 		return nil, fmt.Errorf("安全ではないURLが指定されました: %w", err)
@@ -75,6 +77,7 @@ func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]
 	return c.httpClient.FetchBytes(ctx, rawURL)
 }
 
+// toPart データに有効な画像 MIME タイプがある場合は画像データを genai.Part オブジェクトに変換し、それ以外の場合は nil を返します。
 func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	mimeType := http.DetectContentType(data)
 	if !strings.HasPrefix(mimeType, "image/") {

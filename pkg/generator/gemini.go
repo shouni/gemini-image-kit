@@ -75,6 +75,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
 }
 
+// toOptions 提供されたアスペクト比、システム プロンプト、シード値を GenerateOptions 構造体に変換します。
 func (g *GeminiGenerator) toOptions(ar, sp string, seed *int64) gemini.GenerateOptions {
 	return gemini.GenerateOptions{AspectRatio: ar, SystemPrompt: sp, Seed: seed}
 }
