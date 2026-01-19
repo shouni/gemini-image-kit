@@ -37,7 +37,8 @@ func IsSafeURL(rawURL string) (bool, error) {
 	return true, nil
 }
 
-// dereferenceSeed 指定されたint64ポインタの参照解除された値を返します。ポインタがnilの場合は0を返します。
+// dereferenceSeed は、int64のポインタを安全にデリファレンスします。
+// ポインタがnilの場合は0を返します。
 func dereferenceSeed(seed *int64) int64 {
 	if seed == nil {
 		return 0
