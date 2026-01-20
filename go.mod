@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/shouni/go-gemini-client v1.0.4
-	github.com/shouni/go-remote-io v1.1.2
+	github.com/shouni/go-remote-io v1.2.0
 	google.golang.org/genai v1.42.0
 )
 
