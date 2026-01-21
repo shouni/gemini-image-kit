@@ -18,11 +18,14 @@
 
 ## ✨ 主な特徴 (Features)
 
-* **🖼️ Unified Generator**: プロンプト構築から生成までを一貫して管理。
+* **🖼️ Unified Generator**:
+    * プロンプト構築から生成までを一貫して管理。
 * **🔗 Intelligent Asset Fallback**:
     * Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。
-* **☁️ Cloud Storage Native**: `gs://` スキームを標準サポート。キャラクターデザインなどのアセットを GCS から直接参照可能。
-* **🛡️ SSRF Protected**: 外部 URL 取得時、名前解決後の IP レベルで内部ネットワークへのアクセスを遮断するバリデーション。
+* **☁️ Cloud Storage Native**:
+    * `gs://` スキームを標準サポート。キャラクターデザインなどのアセットを GCS から直接参照可能。
+* **🛡️ SSRF Protected**:
+    * 外部 URL 取得時、名前解決後の IP レベルで内部ネットワークへのアクセスを遮断するバリデーション。
 * **⚡️ Built-in Image Optimization**:
     * 送信前に画像をインメモリで最適化（JPEG 圧縮）し、ペイロードサイズを抑えて高速な生成を実現。
 * **🧬 Robust Design**:
