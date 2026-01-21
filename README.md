@@ -53,7 +53,7 @@ if err != nil {
 }
 
 // 2. ジェネレーターの生成
-gen, err := generator.NewGeminiGenerator("imagen-3.0-generate-001", core)
+gen, err := generator.NewGeminiGenerator("gemini-3-pro-image-preview", core)
 
 ```
 
