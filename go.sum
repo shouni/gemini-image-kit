@@ -99,8 +99,8 @@ github.com/shouni/go-gemini-client v1.0.4 h1:GnaVR2H6n2IxJsX+Me8StJBhvEEjt874OxL
 github.com/shouni/go-gemini-client v1.0.4/go.mod h1:DMuaUXihLfCFR3UXjN1TPhdzlw4s06ESLb+xxbS+q5k=
 github.com/shouni/go-remote-io v1.2.0 h1:2B4QpjuUwC95I3dG2gyr2vwwyXRBB/ZNP9Dhuj05URM=
 github.com/shouni/go-remote-io v1.2.0/go.mod h1:0zVVFnT4jSw42lf/zFZD1TghwX9aTNgAs9+wIXandis=
-github.com/shouni/go-utils v1.0.16 h1:3DYPlS6WbrWcIfJy0HBlTmwEoeikEZR507U4bCWtDxU=
-github.com/shouni/go-utils v1.0.16/go.mod h1:dQxOuVTvWFHWEH/G6izteLh+tubkI5Sl1jpDWlCSkBU=
+github.com/shouni/go-utils v1.0.17 h1:azOcNYzGVX6IpaQXthYH4cqdmJtp7Ejfb9GiGNbD/x4=
+github.com/shouni/go-utils v1.0.17/go.mod h1:T9otPVd4Fp8El1QRnRJbgGsW9usyLYPv7czvUiLLN+o=
 github.com/spiffe/go-spiffe/v2 v2.6.0 h1:l+DolpxNWYgruGQVV0xsfeya3CsC7m8iBzDnMpsbLuo=
 github.com/spiffe/go-spiffe/v2 v2.6.0/go.mod h1:gm2SeUoMZEtpnzPNs2Csc0D/gX33k1xIx7lEzqblHEs=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
