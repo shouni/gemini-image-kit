@@ -9,7 +9,6 @@ import (
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
-	"github.com/shouni/gemini-image-kit/pkg/utils"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/netarmor/securenet"
 	"google.golang.org/genai"
@@ -22,7 +21,7 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 		return nil, err
 	}
 
-	out, err := c.ParseToResponse(resp, utils.DereferenceSeed(opts.Seed))
+	out, err := c.ParseToResponse(resp, domain.DereferenceSeed(opts.Seed))
 	if err != nil {
 		return nil, err
 	}
