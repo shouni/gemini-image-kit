@@ -36,8 +36,3 @@ type ImageCacher interface {
 	// Set は、指定されたキーと値、有効期限でアイテムを保存します。
 	Set(key string, value any, d time.Duration)
 }
-
-// HTTPClient は、HTTPリクエストを実行し、URLからデータを取得するためのインターフェースです。
-type HTTPClient interface {
-	FetchBytes(ctx context.Context, url string) ([]byte, error)
-}

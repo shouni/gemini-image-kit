@@ -10,7 +10,6 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
-	"github.com/shouni/netarmor/securenet"
 	"google.golang.org/genai"
 )
 
@@ -63,10 +62,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 // fetchImageData は、指定されたURLまたはGCSパスから画像データを取得します。
 // URLの安全性を検証し、GCSまたはHTTP経由でデータをフェッチします。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
-	if safe, err := securenet.IsSafeURL(rawURL); err != nil || !safe {
-		return nil, fmt.Errorf("安全ではないURLが指定されました: %w", err)
-	}
-
+	// 1. GCSパスの場合
 	if strings.HasPrefix(rawURL, "gs://") {
 		rc, err := c.reader.Open(ctx, rawURL)
 		if err != nil {
@@ -75,6 +71,10 @@ func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]
 		defer rc.Close()
 		return io.ReadAll(rc)
 	}
+
+	// 2. HTTP/HTTPSの場合
+	// httpClient (httpkit.Client) 内部で SkipNetworkValidation フラグに基づいた
+	// 安全検証が行われるため、ここではそのまま呼び出すだけでOK。
 	return c.httpClient.FetchBytes(ctx, rawURL)
 }
 
