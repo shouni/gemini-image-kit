@@ -82,11 +82,8 @@ pkg/
 │   ├── core.go        # GeminiImageCore（File API のライフサイクル管理）
 │   ├── core_helper.go # 画像フェッチ・パース処理
 │   └── types.go       # パッケージ内部用定数・型定義
-├── imgutil/           # 画像処理ユーティリティ
-│   └── compressor.go  # 送信前画像圧縮（JPEG最適化）
-└── utils/             # 共通ヘルパー
-    └── util.go        # プロンプト構築・シード値変換・SSRFバリデーション
-
+└── imgutil/           # 画像処理ユーティリティ
+    └── compressor.go  # 送信前画像圧縮（JPEG最適化）
 ```
 
 ---
