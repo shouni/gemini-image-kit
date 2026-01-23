@@ -25,7 +25,8 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 
 	t.Run("キャッシュがない場合はアップロードが実行される", func(t *testing.T) {
 		ai.uploadCalled = false
-		cache.data = make(map[string]any)
+		// 内部フィールドを直接触らず Clear メソッドを使用
+		cache.Clear()
 		fileURL := "https://example.com/test.png"
 
 		uri, err := core.UploadFile(ctx, fileURL)
@@ -33,7 +34,7 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, ai.uploadCalled, "expected AI client UploadFile to be called")
 
-		// 期待値を mocks_test.go の定数に合わせる
+		// mocks_test.go の定数を使用
 		assert.Equal(t, MockFileUploadURI, uri)
 
 		// キャッシュに保存されているか確認
@@ -78,10 +79,12 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 
 	t.Run("キャッシュがない場合はエラーを返す", func(t *testing.T) {
 		rawID := "files/raw-id"
-		// キャッシュに何も入れずに実行
+		// キャッシュをクリアした状態で実行
+		cache.Clear()
 		err := core.DeleteFile(ctx, rawID)
 
-		assert.Error(t, err, "expected error when cache is missing")
+		//assert.Error ではなく require.Error を使用し、nil パニックを防ぐ
+		require.Error(t, err, "expected error when cache is missing")
 
 		// エラーメッセージの検証
 		expectedErrMsg := "cannot determine file name for deletion"

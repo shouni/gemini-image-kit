@@ -146,6 +146,10 @@ type mockCache struct {
 	data map[string]any
 }
 
+func (m *mockCache) Clear() {
+	m.data = make(map[string]any)
+}
+
 func (m *mockCache) Get(key string) (any, bool) {
 	if m.data == nil {
 		return nil, false

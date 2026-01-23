@@ -33,7 +33,7 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 	}, nil
 }
 
-// PrepareImagePart は URL または GCS パスから画像を準備し、genai.Part に変換します。(ImageExecutor インターフェース実装)
+// PrepareImagePart は URL または クラウドストーレージパスから画像を準備し、genai.Part に変換します。(ImageExecutor インターフェース実装)
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
 	// 1. File API キャッシュチェック
 	if c.cache != nil {
@@ -61,7 +61,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 }
 
 // fetchImageData は、指定されたURLまたはクラウドストーレージパスから画像データを取得します。
-// URLの安全性を検証し、GCSまたはHTTP経由でデータをフェッチします。
+// URLの安全性を検証し、クラウドストーレージまたはHTTP経由でデータをフェッチします。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
 	// 1. クラウドストーレージパスの場合
 	if remoteio.IsRemoteURI(rawURL) {
