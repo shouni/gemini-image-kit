@@ -82,11 +82,8 @@ pkg/
 │   ├── core.go        # GeminiImageCore（File API のライフサイクル管理）
 │   ├── core_helper.go # 画像フェッチ・パース処理
 │   └── types.go       # パッケージ内部用定数・型定義
-├── imgutil/           # 画像処理ユーティリティ
-│   └── compressor.go  # 送信前画像圧縮（JPEG最適化）
-└── utils/             # 共通ヘルパー
-    └── util.go        # プロンプト構築・シード値変換・SSRFバリデーション
-
+└── imgutil/           # 画像処理ユーティリティ
+    └── compressor.go  # 送信前画像圧縮（JPEG最適化）
 ```
 
 ---
@@ -96,7 +93,7 @@ pkg/
 * [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
 * [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API 通信の抽象化
 * [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - マルチストレージ Reader
-* [shouni/netarmor](https://github.com/shouni/netarmor) - ネットワークユーティリティ
+* [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - NetArmor 統合型 HTTP 通信ライブラリ
 
 ---
 
