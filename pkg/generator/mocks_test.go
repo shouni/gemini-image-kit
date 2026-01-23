@@ -16,6 +16,11 @@ import (
 
 // --- AI Client Mock ---
 
+const (
+	MockFileUploadURI  = "https://generativelanguage.googleapis.com/v1beta/files/mock-id"
+	MockFileUploadName = "files/mock-id"
+)
+
 type mockAIClient struct {
 	uploadCalled bool
 	deleteCalled bool
@@ -24,8 +29,7 @@ type mockAIClient struct {
 
 func (m *mockAIClient) UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error) {
 	m.uploadCalled = true
-	// テスト期待値と一致させる URI
-	return "https://generativelanguage.googleapis.com/v1beta/files/mock-id", "files/mock-id", nil
+	return MockFileUploadURI, MockFileUploadName, nil
 }
 
 func (m *mockAIClient) DeleteFile(ctx context.Context, name string) error {

@@ -23,11 +23,9 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour)
 	require.NoError(t, err, "failed to create core")
 
-	// モック (mockAIClient.UploadFile) が返す期待値
-	const mockURI = "https://generativelanguage.googleapis.com/v1beta/files/mock-id"
-
 	t.Run("キャッシュがない場合はアップロードが実行される", func(t *testing.T) {
 		ai.uploadCalled = false
+		cache.data = make(map[string]any)
 		fileURL := "https://example.com/test.png"
 
 		uri, err := core.UploadFile(ctx, fileURL)
@@ -35,8 +33,8 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, ai.uploadCalled, "expected AI client UploadFile to be called")
 
-		// 期待値を mocks_test.go の戻り値に合わせる
-		assert.Equal(t, mockURI, uri)
+		// 期待値を mocks_test.go の定数に合わせる
+		assert.Equal(t, MockFileUploadURI, uri)
 
 		// キャッシュに保存されているか確認
 		cachedURI, ok := cache.Get(cacheKeyFileAPIURI + fileURL)
