@@ -3,10 +3,10 @@ module github.com/shouni/gemini-image-kit
 go 1.25
 
 require (
-	github.com/shouni/go-gemini-client v1.0.4
+	github.com/shouni/go-gemini-client v1.0.5
 	github.com/shouni/go-remote-io v1.2.0
-	github.com/shouni/go-utils v1.0.17
-	google.golang.org/genai v1.42.0
+	github.com/shouni/netarmor v1.0.0
+	google.golang.org/genai v1.43.0
 )
 
 require (
