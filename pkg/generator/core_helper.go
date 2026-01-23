@@ -11,6 +11,7 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/gemini-image-kit/pkg/utils"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
+	"github.com/shouni/netarmor/securenet"
 	"google.golang.org/genai"
 )
 
@@ -63,7 +64,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 // fetchImageData は、指定されたURLまたはGCSパスから画像データを取得します。
 // URLの安全性を検証し、GCSまたはHTTP経由でデータをフェッチします。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
-	if safe, err := utils.IsSafeURL(rawURL); err != nil || !safe {
+	if safe, err := securenet.IsSafeURL(rawURL); err != nil || !safe {
 		return nil, fmt.Errorf("安全ではないURLが指定されました: %w", err)
 	}
 
