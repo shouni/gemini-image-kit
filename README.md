@@ -96,7 +96,7 @@ pkg/
 * [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
 * [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API 通信の抽象化
 * [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - マルチストレージ Reader
-* [shouni/go-utils](https://github.com/shouni/go-utils) - 汎用ユーティリティ
+* [shouni/netarmor](https://github.com/shouni/netarmor) - ネットワークユーティリティ
 
 ---
 
