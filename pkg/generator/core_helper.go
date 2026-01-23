@@ -10,7 +10,7 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
-	"github.com/shouni/netarmor/securenet"
+	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
 
@@ -33,7 +33,7 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 	}, nil
 }
 
-// PrepareImagePart は URL または GCS パスから画像を準備し、genai.Part に変換します。(ImageExecutor インターフェース実装)
+// PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。(ImageExecutor インターフェース実装)
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
 	// 1. File API キャッシュチェック
 	if c.cache != nil {
@@ -60,14 +60,11 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	return c.toPart(finalData)
 }
 
-// fetchImageData は、指定されたURLまたはGCSパスから画像データを取得します。
-// URLの安全性を検証し、GCSまたはHTTP経由でデータをフェッチします。
+// fetchImageData は、指定されたURLまたはcloud storageから画像データを取得します。
+// URLの安全性を検証し、cloud storageまたはHTTP経由でデータをフェッチします。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
-	if safe, err := securenet.IsSafeURL(rawURL); err != nil || !safe {
-		return nil, fmt.Errorf("安全ではないURLが指定されました: %w", err)
-	}
-
-	if strings.HasPrefix(rawURL, "gs://") {
+	// 1. cloud storageの場合
+	if remoteio.IsRemoteURI(rawURL) {
 		rc, err := c.reader.Open(ctx, rawURL)
 		if err != nil {
 			return nil, err
@@ -75,6 +72,10 @@ func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]
 		defer rc.Close()
 		return io.ReadAll(rc)
 	}
+
+	// 2. HTTP/HTTPSの場合
+	// httpClient (httpkit.Client) 内部で SkipNetworkValidation フラグに基づいた
+	// 安全検証が行われるため、ここではそのまま呼び出すだけでOK。
 	return c.httpClient.FetchBytes(ctx, rawURL)
 }
 

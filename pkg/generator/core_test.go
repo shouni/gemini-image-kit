@@ -2,9 +2,11 @@ package generator
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // 注意: mockAIClient, mockReader, mockHTTPClient, mockCache は
@@ -19,50 +21,39 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 	reader := &mockReader{}
 
 	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour)
-	if err != nil {
-		t.Fatalf("failed to create core: %v", err)
-	}
+	require.NoError(t, err, "failed to create core")
 
 	t.Run("キャッシュがない場合はアップロードが実行される", func(t *testing.T) {
 		ai.uploadCalled = false
+		// 内部フィールドを直接触らず Clear メソッドを使用
+		cache.Clear()
 		fileURL := "https://example.com/test.png"
 
 		uri, err := core.UploadFile(ctx, fileURL)
 
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !ai.uploadCalled {
-			t.Error("expected AI client UploadFile to be called")
-		}
-		if uri != "https://gemini.api/files/new-file-id" {
-			t.Errorf("got uri %s, want https://gemini.api/files/new-file-id", uri)
-		}
+		require.NoError(t, err)
+		assert.True(t, ai.uploadCalled, "expected AI client UploadFile to be called")
+
+		// mocks_test.go の定数を使用
+		assert.Equal(t, MockFileUploadURI, uri)
 
 		// キャッシュに保存されているか確認
-		cachedURI, _ := cache.Get(cacheKeyFileAPIURI + fileURL)
-		if cachedURI != uri {
-			t.Errorf("cache mismatch: got %v, want %v", cachedURI, uri)
-		}
+		cachedURI, ok := cache.Get(cacheKeyFileAPIURI + fileURL)
+		assert.True(t, ok, "should be cached")
+		assert.Equal(t, uri, cachedURI)
 	})
 
 	t.Run("キャッシュがある場合はアップロードをスキップする", func(t *testing.T) {
 		ai.uploadCalled = false
 		fileURL := "https://example.com/cached.png"
-		expectedURI := "https://gemini.api/files/already-uploaded"
+		expectedURI := "https://generativelanguage.googleapis.com/v1beta/files/already-uploaded"
 		cache.Set(cacheKeyFileAPIURI+fileURL, expectedURI, time.Hour)
 
 		uri, err := core.UploadFile(ctx, fileURL)
 
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if ai.uploadCalled {
-			t.Error("AI client UploadFile should NOT be called when cached")
-		}
-		if uri != expectedURI {
-			t.Errorf("got uri %s, want %s", uri, expectedURI)
-		}
+		require.NoError(t, err)
+		assert.False(t, ai.uploadCalled, "AI client UploadFile should NOT be called when cached")
+		assert.Equal(t, expectedURI, uri)
 	})
 }
 
@@ -82,26 +73,21 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 
 		err := core.DeleteFile(ctx, fileURL)
 
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if ai.lastFileName != apiName {
-			t.Errorf("expected %s, got %s", apiName, ai.lastFileName)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, apiName, ai.lastFileName)
 	})
 
-	t.Run("キャッシュがない場合はエラーを返す（仕様変更の確認）", func(t *testing.T) {
+	t.Run("キャッシュがない場合はエラーを返す", func(t *testing.T) {
 		rawID := "files/raw-id"
-		// キャッシュに何も入れずに実行
+		// キャッシュをクリアした状態で実行
+		cache.Clear()
 		err := core.DeleteFile(ctx, rawID)
 
-		if err == nil {
-			t.Error("expected error when cache is missing, but got nil")
-		}
+		//assert.Error ではなく require.Error を使用し、nil パニックを防ぐ
+		require.Error(t, err, "expected error when cache is missing")
 
+		// エラーメッセージの検証
 		expectedErrMsg := "cannot determine file name for deletion"
-		if err != nil && !strings.Contains(err.Error(), expectedErrMsg) {
-			t.Errorf("expected error message to contain %q, got %q", expectedErrMsg, err.Error())
-		}
+		assert.Contains(t, err.Error(), expectedErrMsg)
 	})
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 
 	"github.com/shouni/go-gemini-client/pkg/gemini"
+	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 )
 
@@ -17,13 +18,13 @@ import (
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
 	reader     remoteio.InputReader
-	httpClient HTTPClient
+	httpClient httpkit.ClientInterface
 	cache      ImageCacher
 	expiration time.Duration
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, client HTTPClient, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.ClientInterface, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
 	// どの依存関係が不足しているか具体的に示すように修正
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
@@ -31,7 +32,7 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	if reader == nil {
 		return nil, fmt.Errorf("reader is required")
 	}
-	if client == nil {
+	if httpClient == nil {
 		return nil, fmt.Errorf("httpClient is required")
 	}
 	// cache は nil を許容（キャッシュなし動作）
@@ -39,7 +40,7 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	return &GeminiImageCore{
 		aiClient:   aiClient,
 		reader:     reader,
-		httpClient: client,
+		httpClient: httpClient,
 		cache:      cache,
 		expiration: cacheTTL,
 	}, nil
