@@ -10,6 +10,7 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
+	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
 
@@ -59,11 +60,11 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	return c.toPart(finalData)
 }
 
-// fetchImageData は、指定されたURLまたはGCSパスから画像データを取得します。
+// fetchImageData は、指定されたURLまたはクラウドストーレージパスから画像データを取得します。
 // URLの安全性を検証し、GCSまたはHTTP経由でデータをフェッチします。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
-	// 1. GCSパスの場合
-	if strings.HasPrefix(rawURL, "gs://") {
+	// 1. クラウドストーレージパスの場合
+	if remoteio.IsRemoteURI(rawURL) {
 		rc, err := c.reader.Open(ctx, rawURL)
 		if err != nil {
 			return nil, err
