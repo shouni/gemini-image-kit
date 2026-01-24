@@ -5,10 +5,7 @@
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/gemini-image-kit)](https://github.com/shouni/gemini-image-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-
-# 🎨 Gemini Image Kit
-
-## 🚀 概要 (About) - Gemini File APIをスマートに管理。アセット運用を最適化する画像生成コア
+## 🚀 概要 (About) - アセット運用を最適化する画像生成コア
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットです。
 
