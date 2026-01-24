@@ -91,9 +91,9 @@ pkg/
 ## 🤝 依存関係 (Dependencies)
 
 * [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
-* [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API 通信の抽象化
+* [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Net Armor統合型 Geminiクライアントライブラリ
+* [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - Net Armor統合型 HTTP 通信ライブラリ
 * [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - マルチストレージ Reader
-* [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - NetArmor 統合型 HTTP 通信ライブラリ
 
 ---
 
