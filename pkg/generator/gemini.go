@@ -28,7 +28,11 @@ func NewGeminiGenerator(model string, core ImageExecutor) (*GeminiGenerator, err
 
 // GenerateMangaPanel は単一のパネル画像を生成します。
 func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
-	parts := []*genai.Part{{Text: buildFinalPrompt(req.Prompt, req.NegativePrompt)}}
+	var parts []*genai.Part
+	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
+	if finalPrompt == "" {
+		return nil, fmt.Errorf("prompt cannot be empty")
+	}
 
 	// File API URI を優先し、なければ ReferenceURL (URL/GCS) を試行
 	if req.FileAPIURI != "" {
@@ -39,17 +43,18 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 		}
 	}
 
+	parts = append(parts, &genai.Part{Text: finalPrompt})
 	opts := g.toOptions(req.AspectRatio, req.SystemPrompt, req.Seed)
 	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
 }
 
 // GenerateMangaPage は複数アセットを参照してページ（または複雑なパネル）画像を生成します。
 func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
+	var parts []*genai.Part
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")
 	}
-	parts := []*genai.Part{{Text: finalPrompt}}
 
 	// 有効な File API URI が追加されたかどうかをフラグで管理
 	var hasValidFileAPIURI bool
@@ -71,6 +76,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 		}
 	}
 
+	parts = append(parts, &genai.Part{Text: finalPrompt})
 	opts := g.toOptions(req.AspectRatio, req.SystemPrompt, req.Seed)
 	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
 }
