@@ -18,6 +18,7 @@ type GeminiGenerator struct {
 	core  ImageExecutor
 }
 
+// NewGeminiGenerator は新しい GeminiGenerator を作成します。
 func NewGeminiGenerator(model string, core ImageExecutor) (*GeminiGenerator, error) {
 	if core == nil {
 		return nil, fmt.Errorf("core (ImageExecutor) is required")
@@ -104,7 +105,7 @@ func (g *GeminiGenerator) toOptions(ar, sp string, seed *int64) gemini.GenerateO
 	return gemini.GenerateOptions{AspectRatio: ar, SystemPrompt: sp, Seed: seed}
 }
 
-// buildFinalPrompt スはペースを削除した後、プロンプトと否定プロンプトを定義済みの文字列で区切って結合します。
+// buildFinalPrompt はスペースを削除した後、プロンプトと否定プロンプトを定義済みの文字列で区切って結合します。
 func buildFinalPrompt(prompt, negative string) string {
 	p := strings.TrimSpace(prompt)
 	n := strings.TrimSpace(negative)
