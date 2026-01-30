@@ -28,14 +28,13 @@ func NewGeminiGenerator(model string, core ImageExecutor) (*GeminiGenerator, err
 
 // GenerateMangaPanel は単一のパネル画像を生成します。
 func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
-	// collectImageParts 側で空文字チェックを行うため、直接スライス化して渡す（簡潔化）
 	return g.generate(
 		ctx,
 		req.Prompt,
 		req.NegativePrompt,
-		[]string{req.FileAPIURI},
-		[]string{req.ReferenceURL},
+		[]domain.ImageURI{req.Image},
 		req.AspectRatio,
+		req.ImageSize,
 		req.SystemPrompt,
 		req.Seed,
 	)
@@ -47,65 +46,66 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 		ctx,
 		req.Prompt,
 		req.NegativePrompt,
-		req.FileAPIURIs,
-		req.ReferenceURLs,
+		req.Images,
 		req.AspectRatio,
+		req.ImageSize,
 		req.SystemPrompt,
 		req.Seed,
 	)
 }
 
 // generate は画像生成のコアロジックです。
-func (g *GeminiGenerator) generate(ctx context.Context, prompt, negative string, fileURIs, refURLs []string, ar, sp string, seed *int64) (*domain.ImageResponse, error) {
+func (g *GeminiGenerator) generate(ctx context.Context, prompt, negative string, uris []domain.ImageURI, ar, size, sp string, seed *int64) (*domain.ImageResponse, error) {
 	finalPrompt := buildFinalPrompt(prompt, negative)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")
 	}
 
-	// 1. 画像アセット（素材）を先に収集
-	parts := g.collectImageParts(ctx, fileURIs, refURLs)
+	// 1. 画像アセット（素材）を収集
+	parts := g.collectImageParts(ctx, uris)
 
-	// 2. 最後にテキストプロンプト（指示）を追加（高度な合成向けの意図的な順序）
+	// 2. 最後にテキストプロンプトを追加
 	parts = append(parts, &genai.Part{Text: finalPrompt})
 
-	opts := g.toOptions(ar, sp, seed)
+	// 3. ImageSize を含めたオプション構築
+	opts := g.toOptions(ar, size, sp, seed)
 	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
 }
 
-// collectImageParts はアセットからパーツを生成します。
-func (g *GeminiGenerator) collectImageParts(ctx context.Context, fileURIs, refURLs []string) []*genai.Part {
-	maxLen := len(fileURIs)
-	if len(refURLs) > maxLen {
-		maxLen = len(refURLs)
-	}
-	parts := make([]*genai.Part, 0, maxLen)
+// collectImageParts は ImageURI 構造体からパーツを生成します。
+func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.ImageURI) []*genai.Part {
+	parts := make([]*genai.Part, 0, len(uris))
 
-	// File API URI を優先
-	for _, uri := range fileURIs {
-		if uri != "" {
-			parts = append(parts, &genai.Part{FileData: &genai.FileData{FileURI: uri}})
+	for _, uri := range uris {
+		// Gemini File API URI がある場合は最優先で使用
+		if uri.FileAPIURI != "" {
+			parts = append(parts, &genai.Part{
+				FileData: &genai.FileData{FileURI: uri.FileAPIURI},
+			})
+			continue
 		}
-	}
 
-	// File API が一つもなかった場合のみ ReferenceURL を処理
-	if len(parts) == 0 {
-		for _, url := range refURLs {
-			if url != "" {
-				if res := g.core.PrepareImagePart(ctx, url); res != nil {
-					parts = append(parts, res)
-				}
+		// なければ ReferenceURL からフォールバック
+		if uri.ReferenceURL != "" {
+			if res := g.core.PrepareImagePart(ctx, uri.ReferenceURL); res != nil {
+				parts = append(parts, res)
 			}
 		}
 	}
 	return parts
 }
 
-// toOptions は指定されたアスペクト比、システム プロンプト、シードを使用して gemini.GenerateOptions インスタンスを構築して返します。
-func (g *GeminiGenerator) toOptions(ar, sp string, seed *int64) gemini.GenerateOptions {
-	return gemini.GenerateOptions{AspectRatio: ar, SystemPrompt: sp, Seed: seed}
+// toOptions は Gemini へのリクエストオプションを構築します。
+func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
+	return gemini.GenerateOptions{
+		AspectRatio:  ar,
+		ImageSize:    size,
+		SystemPrompt: sp,
+		Seed:         seed,
+	}
 }
 
-// buildFinalPrompt はスペースを削除した後、プロンプトと否定プロンプトを定義済みの文字列で区切って結合します。
+// buildFinalPrompt はプロンプトと否定プロンプトを結合します。
 func buildFinalPrompt(prompt, negative string) string {
 	p := strings.TrimSpace(prompt)
 	n := strings.TrimSpace(negative)

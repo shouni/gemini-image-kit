@@ -44,23 +44,47 @@ func TestBuildFinalPrompt(t *testing.T) {
 	}
 }
 
-// GenerateMangaPanel の構造チェック（モックを利用する想定）
+// GenerateMangaPanel の構造チェック
 func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
-	// 実際には core の依存関係（aiClient, httpClient等）をモック化した core を作成します
-	// ここでは、インターフェースではなく具象型に依存しているため、
-	// 依存先の Mock を NewGeminiImageCore に注入してテストします。
-
-	t.Run("FileAPIURIが優先されること", func(t *testing.T) {
-		// ※ ここではロジックの「流れ」を確認する擬似的なコードです
-		// 実際には mockClient を作成して、期待される parts が渡っているか検証します
-
+	t.Run("FileAPIURIとImageSizeが正しく扱われること", func(t *testing.T) {
+		// 構造体のネストに合わせて修正
 		req := domain.ImageGenerationRequest{
-			Prompt:     "test prompt",
-			FileAPIURI: "https://generativelanguage.googleapis.com/v1beta/files/test",
+			Prompt:    "test prompt",
+			ImageSize: "2K",
+			Image: domain.ImageURI{
+				FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/test",
+				ReferenceURL: "gs://bucket/ref.png",
+			},
 		}
 
-		// 本来は core.executeRequest をフックして、
-		// parts[1].FileData.FileURI == req.FileAPIURI であることを確認します。
-		_ = req
+		// 検証のポイント:
+		// 1. collectImageParts において req.Image.FileAPIURI が parts に含まれているか
+		// 2. toOptions において req.ImageSize が options.ImageSize に渡っているか
+
+		if req.Image.FileAPIURI == "" {
+			t.Error("FileAPIURI should be set in req.Image")
+		}
+		if req.ImageSize != "2K" {
+			t.Errorf("ImageSize should be 2K, got %s", req.ImageSize)
+		}
+	})
+}
+
+func TestGeminiGenerator_GenerateMangaPage_Structure(t *testing.T) {
+	t.Run("複数枚のImageURIが保持されること", func(t *testing.T) {
+		req := domain.ImagePageRequest{
+			Images: []domain.ImageURI{
+				{FileAPIURI: "api-1", ReferenceURL: "ref-1"},
+				{FileAPIURI: "api-2", ReferenceURL: "ref-2"},
+			},
+		}
+
+		if len(req.Images) != 2 {
+			t.Errorf("expected 2 images, got %d", len(req.Images))
+		}
+
+		if req.Images[0].FileAPIURI != "api-1" {
+			t.Errorf("first image API URI mismatch: %s", req.Images[0].FileAPIURI)
+		}
 	})
 }

@@ -3,7 +3,7 @@ module github.com/shouni/gemini-image-kit
 go 1.25
 
 require (
-	github.com/shouni/go-gemini-client v1.0.5
+	github.com/shouni/go-gemini-client v1.0.6
 	github.com/shouni/go-http-kit v1.2.1
 	github.com/shouni/go-remote-io v1.2.0
 	github.com/stretchr/testify v1.11.1
