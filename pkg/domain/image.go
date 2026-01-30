@@ -1,13 +1,19 @@
 package domain
 
+// ImageURI は画像の参照先情報を保持します。
+type ImageURI struct {
+	ReferenceURL string // 元の参照先 (GCS, HTTP等)
+	FileAPIURI   string // Gemini File API 上の URI (https://...)
+}
+
 // ImageGenerationRequest は単一の画像生成要求です。
 type ImageGenerationRequest struct {
 	Prompt         string
 	SystemPrompt   string
 	NegativePrompt string
 	AspectRatio    string
-	ReferenceURL   string // 元の参照先 (GCS, HTTP等)
-	FileAPIURI     string // Gemini File API 上の URI (https://...) ★追加
+	ImageSize      string
+	Image          ImageURI
 	Seed           *int64
 }
 
@@ -17,8 +23,8 @@ type ImagePageRequest struct {
 	SystemPrompt   string
 	NegativePrompt string
 	AspectRatio    string
-	ReferenceURLs  []string // 元の参照先リスト
-	FileAPIURIs    []string // Gemini File API 上の URI リスト ★追加
+	ImageSize      string
+	Images         []ImageURI
 	Seed           *int64
 }
 

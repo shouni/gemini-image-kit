@@ -101,8 +101,8 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/shouni/go-gemini-client v1.0.5 h1:SmjvNmpRqayKju5PHUlCb5HhjMxaArN0NzbL5ioFL/4=
-github.com/shouni/go-gemini-client v1.0.5/go.mod h1:q7+qEX6hHP1o0KdRZkWkbti30jIC0oLslN638zrsccE=
+github.com/shouni/go-gemini-client v1.0.6 h1:u/SPRoqpRF/Dm3ZTxlP7N2H6F+pnzJR/7/4hp8zd2tI=
+github.com/shouni/go-gemini-client v1.0.6/go.mod h1:q7+qEX6hHP1o0KdRZkWkbti30jIC0oLslN638zrsccE=
 github.com/shouni/go-http-kit v1.2.1 h1:oBPuqeifYcVFT2FSra/f4xmJSdYDo45flB4EC8D7w8Y=
 github.com/shouni/go-http-kit v1.2.1/go.mod h1:3hR1zjeVzTJmq+MNB1U4LQ0wTVadS3x4dO4wHL/aspM=
 github.com/shouni/go-remote-io v1.2.0 h1:2B4QpjuUwC95I3dG2gyr2vwwyXRBB/ZNP9Dhuj05URM=
