@@ -85,7 +85,7 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 			continue
 		}
 
-		// なければ ReferenceURL からフォールバック（従来ロジック維持）
+		// なければ ReferenceURL からフォールバック
 		if uri.ReferenceURL != "" {
 			if res := g.core.PrepareImagePart(ctx, uri.ReferenceURL); res != nil {
 				parts = append(parts, res)
