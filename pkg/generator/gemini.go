@@ -14,22 +14,28 @@ const negativePromptSeparator = "\n\n[Negative Prompt]\n"
 
 // GeminiGenerator は高レベルな画像生成ロジックを担当します。
 type GeminiGenerator struct {
-	model string
-	core  ImageExecutor
+	model        string
+	qualityModel string
+	core         ImageExecutor
 }
 
 // NewGeminiGenerator は新しい GeminiGenerator を作成します。
-func NewGeminiGenerator(model string, core ImageExecutor) (*GeminiGenerator, error) {
+func NewGeminiGenerator(model, qualityModel string, core ImageExecutor) (*GeminiGenerator, error) {
 	if core == nil {
 		return nil, fmt.Errorf("core (ImageExecutor) is required")
 	}
-	return &GeminiGenerator{model: model, core: core}, nil
+	return &GeminiGenerator{
+		model:        model,
+		qualityModel: qualityModel,
+		core:         core,
+	}, nil
 }
 
 // GenerateMangaPanel は単一のパネル画像を生成します。
 func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
 	return g.generate(
 		ctx,
+		g.model,
 		req.Prompt,
 		req.NegativePrompt,
 		[]domain.ImageURI{req.Image},
@@ -44,6 +50,7 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
 	return g.generate(
 		ctx,
+		g.qualityModel,
 		req.Prompt,
 		req.NegativePrompt,
 		req.Images,
@@ -55,7 +62,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 }
 
 // generate は画像生成のコアロジックです。
-func (g *GeminiGenerator) generate(ctx context.Context, prompt, negative string, uris []domain.ImageURI, ar, size, sp string, seed *int64) (*domain.ImageResponse, error) {
+func (g *GeminiGenerator) generate(ctx context.Context, model, prompt, negative string, uris []domain.ImageURI, ar, size, sp string, seed *int64) (*domain.ImageResponse, error) {
 	finalPrompt := buildFinalPrompt(prompt, negative)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")
@@ -69,7 +76,7 @@ func (g *GeminiGenerator) generate(ctx context.Context, prompt, negative string,
 
 	// 3. ImageSize を含めたオプション構築
 	opts := g.toOptions(ar, size, sp, seed)
-	return g.core.ExecuteRequest(ctx, g.model, parts, opts)
+	return g.core.ExecuteRequest(ctx, model, parts, opts)
 }
 
 // collectImageParts は ImageURI 構造体からパーツを生成します。
