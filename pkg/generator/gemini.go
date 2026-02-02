@@ -21,9 +21,13 @@ type GeminiGenerator struct {
 
 // NewGeminiGenerator は新しい GeminiGenerator を作成します。
 func NewGeminiGenerator(model, qualityModel string, core ImageExecutor) (*GeminiGenerator, error) {
+	if model == "" || qualityModel == "" {
+		return nil, fmt.Errorf("model and qualityModel are required")
+	}
 	if core == nil {
 		return nil, fmt.Errorf("core (ImageExecutor) is required")
 	}
+
 	return &GeminiGenerator{
 		model:        model,
 		qualityModel: qualityModel,
