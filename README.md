@@ -31,42 +31,6 @@
 
 ---
 
-## 🛠️ クイックスタート (Usage)
-
-### 1. ジェネレーターの初期化
-
-```go
-import (
-    "time"
-    "github.com/shouni/gemini-image-kit/pkg/generator"
-)
-
-// 1. 基盤となる Core の準備
-core, err := generator.NewGeminiImageCore(aiClient, reader, httpClient, cache, 24*time.Hour)
-if err != nil {
-    log.Fatal(err)
-}
-
-// 2. ジェネレーターの生成
-gen, err := generator.NewGeminiGenerator("gemini-3-pro-image-preview", core)
-
-```
-
-### 2. 画像の生成
-
-```go
-req := domain.ImageGenerationRequest{
-    Prompt:       "サイバーパンクな街に立つキャラクター",
-    ReferenceURL: "gs://my-bucket/char_design.png", // GCSから自動取得
-    AspectRatio:  "16:9",
-}
-
-resp, err := gen.GenerateMangaPanel(ctx, req)
-
-```
-
----
-
 ## 📂 プロジェクト構造 (Layout)
 
 ```text
