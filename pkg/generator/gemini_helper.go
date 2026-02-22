@@ -51,7 +51,7 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 			parts = append(parts, &genai.Part{
 				FileData: &genai.FileData{
 					FileURI:  uri.FileAPIURI,
-					MIMEType: "image/jpeg",
+					MIMEType: g.guessMIMEType(uri.ReferenceURL),
 				},
 			})
 			continue
