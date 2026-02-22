@@ -6,44 +6,6 @@ import (
 	"github.com/shouni/gemini-image-kit/pkg/domain"
 )
 
-// buildFinalPrompt の単体テスト
-func TestBuildFinalPrompt(t *testing.T) {
-	tests := []struct {
-		name     string
-		prompt   string
-		negative string
-		want     string
-	}{
-		{
-			name:     "プロンプトのみ",
-			prompt:   "a cute robot",
-			negative: "",
-			want:     "a cute robot",
-		},
-		{
-			name:     "ネガティブプロンプトあり",
-			prompt:   "a cute robot",
-			negative: "blurry, low quality",
-			want:     "a cute robot\n\n[Negative Prompt]\nblurry, low quality",
-		},
-		{
-			name:     "空文字とスペースのトリミング",
-			prompt:   "  starry night  ",
-			negative: "  dark  ",
-			want:     "starry night\n\n[Negative Prompt]\ndark",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := buildFinalPrompt(tt.prompt, tt.negative)
-			if got != tt.want {
-				t.Errorf("buildFinalPrompt() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 // GenerateMangaPanel の構造チェック
 func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 	t.Run("FileAPIURIとImageSizeが正しく扱われること", func(t *testing.T) {
