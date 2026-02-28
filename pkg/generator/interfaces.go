@@ -13,6 +13,8 @@ import (
 type AssetManager interface {
 	UploadFile(ctx context.Context, fileURI string) (string, error)
 	DeleteFile(ctx context.Context, fileURI string) error
+	// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
+	IsVertexAI() bool
 }
 
 // ImageGenerator はビジネスロジック層が利用する統合窓口です。
