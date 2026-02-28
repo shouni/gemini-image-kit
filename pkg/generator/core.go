@@ -101,3 +101,8 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 	// キャッシュミスした場合、URL 形式の fileURI では Delete API を叩けないためエラーを返す
 	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }
+
+// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
+func (c *GeminiImageCore) IsVertexAI() bool {
+	return c.aiClient.IsVertexAI()
+}

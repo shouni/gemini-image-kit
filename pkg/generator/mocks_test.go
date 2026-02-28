@@ -25,6 +25,12 @@ type mockAIClient struct {
 	uploadCalled bool
 	deleteCalled bool
 	lastFileName string
+	backend      genai.Backend
+}
+
+// IsVertexAI を実装
+func (m *mockAIClient) IsVertexAI() bool {
+	return m.backend == genai.BackendVertexAI
 }
 
 func (m *mockAIClient) UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error) {

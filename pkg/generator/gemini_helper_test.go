@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
+	"google.golang.org/genai"
 )
 
 func TestGuessMIMEType(t *testing.T) {
@@ -79,33 +80,76 @@ func TestBuildFinalPrompt(t *testing.T) {
 }
 
 func TestCollectImageParts(t *testing.T) {
-	g := &GeminiGenerator{}
 	ctx := context.Background()
 
-	uris := []domain.ImageURI{
+	// 1. モックのセットアップ
+	// Vertex AI モードをシミュレートするモック
+	mockAI := &mockAIClient{backend: genai.BackendVertexAI}
+
+	// GeminiImageCore の初期化 (reader や httpClient は nil でもこのテスト範囲なら動きますが、
+	// 本来は mockReader 等を渡すのが安全です)
+	core, _ := NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0)
+
+	g := &GeminiGenerator{
+		core: core,
+	}
+
+	tests := []struct {
+		name     string
+		isVertex bool
+		uris     []domain.ImageURI
+		verify   func(t *testing.T, parts []*genai.Part)
+	}{
 		{
-			ReferenceURL: "gs://my-bucket/char.png",
+			name:     "Vertex AI モードで GCS URI を処理",
+			isVertex: true,
+			uris: []domain.ImageURI{
+				{ReferenceURL: "gs://my-bucket/char.png"},
+			},
+			verify: func(t *testing.T, parts []*genai.Part) {
+				if len(parts) != 1 || parts[0].FileData == nil {
+					t.Fatalf("FileData パーツが生成されていません")
+				}
+				p := parts[0].FileData
+				if p.FileURI != "gs://my-bucket/char.png" || p.MIMEType != "image/png" {
+					t.Errorf("GCSパスが正しくセットされていません: %+v", p)
+				}
+			},
 		},
 		{
-			FileAPIURI: "https://generativelanguage.googleapis.com/v1beta/files/abc-123",
+			name:     "Gemini API モードで FileAPIURI を優先",
+			isVertex: false,
+			uris: []domain.ImageURI{
+				{
+					ReferenceURL: "https://example.com/ignore.jpg",
+					FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/abc-123",
+				},
+			},
+			verify: func(t *testing.T, parts []*genai.Part) {
+				if len(parts) != 1 || parts[0].FileData == nil {
+					t.Fatalf("FileData パーツが生成されていません")
+				}
+				p := parts[0].FileData
+				if p.FileURI != "https://generativelanguage.googleapis.com/v1beta/files/abc-123" {
+					t.Errorf("FileAPIURI が優先されていません: %s", p.FileURI)
+				}
+			},
 		},
 	}
 
-	parts := g.collectImageParts(ctx, uris)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// テストケースごとに独立したモックとジェネレータを初期化
+			backend := genai.BackendGeminiAPI
+			if tt.isVertex {
+				backend = genai.BackendVertexAI
+			}
+			mockAI = &mockAIClient{backend: backend}
+			core, _ = NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0)
+			g = &GeminiGenerator{core: core}
 
-	if len(parts) != 2 {
-		t.Fatalf("期待されるパーツ数は 2 ですが、%d でした", len(parts))
-	}
-
-	// 1. GCSの検証
-	p1 := parts[0].FileData
-	if p1.FileURI != "gs://my-bucket/char.png" || p1.MIMEType != "image/png" {
-		t.Errorf("GCSパーツのデータが不正です: %+v", p1)
-	}
-
-	// 2. File APIの検証
-	p2 := parts[1].FileData
-	if p2.FileURI != uris[1].FileAPIURI || p2.MIMEType != "image/jpeg" {
-		t.Errorf("File APIパーツのデータが不正です: %+v", p2)
+			parts := g.collectImageParts(ctx, tt.uris)
+			tt.verify(t, parts)
+		})
 	}
 }
