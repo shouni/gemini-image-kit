@@ -139,12 +139,14 @@ func TestCollectImageParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// テストケースに合わせてバックエンドを切り替え
+			// テストケースごとに独立したモックとジェネレータを初期化
+			backend := genai.BackendGeminiAPI
 			if tt.isVertex {
-				mockAI.backend = genai.BackendVertexAI
-			} else {
-				mockAI.backend = genai.BackendGeminiAPI
+				backend = genai.BackendVertexAI
 			}
+			mockAI = &mockAIClient{backend: backend}
+			core, _ = NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0)
+			g = &GeminiGenerator{core: core}
 
 			parts := g.collectImageParts(ctx, tt.uris)
 			tt.verify(t, parts)
