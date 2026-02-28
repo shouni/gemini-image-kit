@@ -35,8 +35,8 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 	parts := make([]*genai.Part, 0, len(uris))
 
 	for _, uri := range uris {
-		// 1. GCS URI (gs://) の場合 (Vertex AI モードで最適動作)
-		if remoteio.IsGCSURI(uri.ReferenceURL) {
+		// 1. Vertex AI モードで、GCS URI (gs://) の場合
+		if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
 			parts = append(parts, &genai.Part{
 				FileData: &genai.FileData{
 					FileURI:  uri.ReferenceURL, // SDKの定義通り FileURI に gs:// パスを入れる

@@ -27,6 +27,8 @@ type ImageExecutor interface {
 	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error)
 	// PrepareImagePart は、指定された画像URLから後続処理で利用する画像パーツを作成します。
 	PrepareImagePart(ctx context.Context, rawURL string) *genai.Part
+	// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
+	IsVertexAI() bool
 }
 
 // ImageCacher は、画像をキャッシュするためのインターフェースです。
