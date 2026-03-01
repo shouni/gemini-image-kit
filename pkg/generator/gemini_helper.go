@@ -12,14 +12,6 @@ import (
 	"google.golang.org/genai"
 )
 
-// 関数の外（パッケージレベル）でグローバル変数として定義することを推奨します。
-var defaultSafetySettings = []*genai.SafetySetting{
-	{Category: genai.HarmCategoryHarassment, Threshold: genai.HarmBlockThresholdBlockNone},
-	{Category: genai.HarmCategoryHateSpeech, Threshold: genai.HarmBlockThresholdBlockNone},
-	{Category: genai.HarmCategorySexuallyExplicit, Threshold: genai.HarmBlockThresholdBlockNone},
-	{Category: genai.HarmCategoryDangerousContent, Threshold: genai.HarmBlockThresholdBlockNone},
-}
-
 // generate は画像生成のコアロジックです。
 func (g *GeminiGenerator) generate(ctx context.Context, model, prompt, negative string, uris []domain.ImageURI, ar, size, sp string, seed *int64) (*domain.ImageResponse, error) {
 	finalPrompt := buildFinalPrompt(prompt, negative)
@@ -92,6 +84,13 @@ func (g *GeminiGenerator) guessMIMEType(uri string) string {
 
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
+	var defaultSafetySettings = []*genai.SafetySetting{
+		{Category: genai.HarmCategoryHarassment, Threshold: genai.HarmBlockThresholdBlockNone},
+		{Category: genai.HarmCategoryHateSpeech, Threshold: genai.HarmBlockThresholdBlockNone},
+		{Category: genai.HarmCategorySexuallyExplicit, Threshold: genai.HarmBlockThresholdBlockNone},
+		{Category: genai.HarmCategoryDangerousContent, Threshold: genai.HarmBlockThresholdBlockNone},
+	}
+
 	return gemini.GenerateOptions{
 		AspectRatio:      ar,
 		ImageSize:        size,
