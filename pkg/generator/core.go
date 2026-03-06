@@ -1,8 +1,10 @@
 package generator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -57,28 +59,46 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 		}
 	}
 
-	data, err := c.fetchImageData(ctx, fileURI)
+	// 1. ストリームとして画像を取得
+	rc, err := c.fetchImageData(ctx, fileURI)
 	if err != nil {
 		return "", err
 	}
+	defer rc.Close()
 
-	finalData := data
+	// 2. 圧縮処理のパイプライン
+	var finalData []byte
+
 	if UseImageCompression {
-		if compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality); err == nil {
+		// io.Reader を直接圧縮関数へ渡す（メモリ効率向上）
+		compressed, err := imgutil.CompressToJPEG(rc, ImageCompressionQuality)
+		if err == nil {
 			finalData = compressed
+		} else {
+			// 圧縮失敗時は全データ読み込みにフォールバック
+			finalData, err = io.ReadAll(rc)
+			if err != nil {
+				return "", err
+			}
+		}
+	} else {
+		// 圧縮不要なら全データ読み込み
+		finalData, err = io.ReadAll(rc)
+		if err != nil {
+			return "", err
 		}
 	}
 
 	mimeType := http.DetectContentType(finalData)
 	displayName := filepath.Base(fileURI)
 
-	// File API へのアップロード
-	uri, fileName, err := c.aiClient.UploadFile(ctx, finalData, mimeType, displayName)
+	// 3. アップロード処理へ渡す
+	uri, fileName, err := c.aiClient.UploadFile(ctx, bytes.NewReader(finalData), mimeType, displayName)
 	if err != nil {
 		return "", err
 	}
 
-	// URI（参照用）と Name（削除用）の両方をキャッシュ
+	// 4. URI と Name をキャッシュ
 	if c.cache != nil {
 		c.cache.Set(cacheKeyURI, uri, c.expiration)
 		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)

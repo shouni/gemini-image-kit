@@ -33,7 +33,12 @@ func (m *mockAIClient) IsVertexAI() bool {
 	return m.backend == genai.BackendVertexAI
 }
 
-func (m *mockAIClient) UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error) {
+func (m *mockAIClient) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error) {
+	_, err := io.ReadAll(r)
+	if err != nil {
+		return "", "", err
+	}
+
 	m.uploadCalled = true
 	return MockFileUploadURI, MockFileUploadName, nil
 }

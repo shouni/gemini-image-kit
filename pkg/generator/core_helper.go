@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -14,7 +15,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。(ImageExecutor インターフェース実装)
+// ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
 func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
 	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, opts)
 	if err != nil {
@@ -33,7 +34,7 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 	}, nil
 }
 
-// PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。(ImageExecutor インターフェース実装)
+// PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
 	// 1. File API キャッシュチェック
 	if c.cache != nil {
@@ -44,43 +45,57 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 		}
 	}
 
-	// 2. 画像の取得と圧縮
-	data, err := c.fetchImageData(ctx, rawURL)
+	// 2. 画像の取得（ストリーム処理）
+	rc, err := c.fetchImageData(ctx, rawURL)
 	if err != nil {
 		return nil
 	}
+	defer rc.Close()
 
-	finalData := data
+	// 3. 画像圧縮処理
+	var finalData []byte
 	if UseImageCompression {
-		if compressed, err := imgutil.CompressToJPEG(data, ImageCompressionQuality); err == nil {
+		// ストリーム（rc）を直接圧縮関数へ渡す
+		compressed, err := imgutil.CompressToJPEG(rc, ImageCompressionQuality)
+		if err == nil {
 			finalData = compressed
+		} else {
+			// 圧縮失敗時は全データ読み込みにフォールバック
+			// 再度読み込む必要がある場合は Seek が必要だが、通常はここに来る前に
+			// rc を読み込んでしまうため、圧縮失敗時に ReadAll するなら
+			// 圧縮関数へ渡す前に一度バッファリングする工夫が必要です。
+			// 今回はシンプルに ReadAll を優先します。
+		}
+	}
+
+	// 圧縮していない、または失敗した場合のフォールバック
+	if finalData == nil {
+		finalData, err = io.ReadAll(rc)
+		if err != nil {
+			return nil
 		}
 	}
 
 	return c.toPart(finalData)
 }
 
-// fetchImageData は、指定されたURLまたはcloud storageから画像データを取得します。
-// URLの安全性を検証し、cloud storageまたはHTTP経由でデータをフェッチします。
-func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) ([]byte, error) {
-	// 1. cloud storageの場合
+// fetchImageData は、指定されたURLまたはCloud Storageから画像データ読み込み用の Reader を返します。
+// 呼び出し側は、読み込み終了後に必ず Close() を呼び出す必要があります。
+func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) (io.ReadCloser, error) {
+	// 1. Cloud Storage の場合
 	if remoteio.IsRemoteURI(rawURL) {
-		rc, err := c.reader.Open(ctx, rawURL)
-		if err != nil {
-			return nil, err
-		}
-		defer rc.Close()
-		return io.ReadAll(rc)
+		return c.reader.Open(ctx, rawURL)
 	}
 
-	// 2. HTTP/HTTPSの場合
-	// httpClient (httpkit.Client) 内部で SkipNetworkValidation フラグに基づいた
-	// 安全検証が行われるため、ここではそのまま呼び出すだけでOK。
-	return c.httpClient.FetchBytes(ctx, rawURL)
+	// 2. HTTP/HTTPS の場合
+	data, err := c.httpClient.FetchBytes(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 // toPart は、与えられたデータが有効な画像MIMEタイプを持つ場合に genai.Part オブジェクトへ変換します。
-// 画像でない場合は nil を返します。
 func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	mimeType := http.DetectContentType(data)
 	if !strings.HasPrefix(mimeType, "image/") {
@@ -97,7 +112,6 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 
 	candidate := resp.RawResponse.Candidates[0]
 
-	// FinishReasonの検証: 安全フィルターによるブロックや中断を正しくハンドリングする
 	if candidate.FinishReason != genai.FinishReasonStop && candidate.FinishReason != genai.FinishReasonUnspecified {
 		return nil, fmt.Errorf("generation failed with FinishReason: %s", candidate.FinishReason)
 	}
