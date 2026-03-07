@@ -1,7 +1,7 @@
 package generator
 
 const (
-	UseImageCompression     = true
+	UseImageCompression     = false
 	ImageCompressionQuality = 75
 	cacheKeyFileAPIURI      = "fileapi_uri:"
 	cacheKeyFileAPIName     = "fileapi_name:"

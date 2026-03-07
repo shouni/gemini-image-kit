@@ -27,7 +27,6 @@ type GeminiImageCore struct {
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
 func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
-	// どの依存関係が不足しているか具体的に示すように修正
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
 	}
@@ -37,7 +36,6 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	if httpClient == nil {
 		return nil, fmt.Errorf("httpClient is required")
 	}
-	// cache は nil を許容（キャッシュなし動作）
 
 	return &GeminiImageCore{
 		aiClient:   aiClient,
@@ -49,6 +47,7 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 }
 
 // UploadFile は画像を Gemini File API にアップロードし、URI を返します。
+// ストリーム最適化により、圧縮不要時はメモリ消費を最小限に抑えてアップロードします。
 func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
 	cacheKeyURI := cacheKeyFileAPIURI + fileURI
 	if c.cache != nil {
@@ -64,37 +63,46 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	if err != nil {
 		return "", err
 	}
+	// 圧縮・アップロードが完了するまでクローズを遅延
 	defer rc.Close()
 
-	rawData, err := io.ReadAll(rc)
-	if err != nil {
-		return "", fmt.Errorf("画像データの読み込みに失敗しました: %w", err)
-	}
+	var uri, fileName string
 
-	// 2. 圧縮処理のパイプライン
-	var finalData []byte
-
+	// 2. 圧縮パイプラインまたはストリームアップロード
 	if UseImageCompression {
+		// 圧縮時はメモリバッファリングが必要
+		rawData, err := io.ReadAll(rc)
+		if err != nil {
+			return "", fmt.Errorf("画像データの読み込みに失敗しました: %w", err)
+		}
+
 		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
+		finalData := rawData
 		if err == nil {
 			finalData = compressed
-		} else {
-			finalData = rawData
 		}
+
+		mimeType := http.DetectContentType(finalData)
+		uri, fileName, err = c.aiClient.UploadFile(ctx, bytes.NewReader(finalData), mimeType, filepath.Base(fileURI))
 	} else {
-		finalData = rawData
+		// 圧縮不要時は MultiReader でストリームを直接アップロード
+		head := make([]byte, 512)
+		n, err := io.ReadFull(rc, head)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+		}
+
+		mimeType := http.DetectContentType(head[:n])
+		stream := io.MultiReader(bytes.NewReader(head[:n]), rc)
+
+		uri, fileName, err = c.aiClient.UploadFile(ctx, stream, mimeType, filepath.Base(fileURI))
 	}
 
-	mimeType := http.DetectContentType(finalData)
-	displayName := filepath.Base(fileURI)
-
-	// 3. アップロード処理へ渡す
-	uri, fileName, err := c.aiClient.UploadFile(ctx, bytes.NewReader(finalData), mimeType, displayName)
 	if err != nil {
 		return "", err
 	}
 
-	// 4. URI と Name をキャッシュ
+	// 3. URI と Name をキャッシュ
 	if c.cache != nil {
 		c.cache.Set(cacheKeyURI, uri, c.expiration)
 		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)
@@ -108,13 +116,10 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 	if c.cache != nil {
 		if val, ok := c.cache.Get(cacheKeyFileAPIName + fileURI); ok {
 			if name, ok := val.(string); ok {
-				// 正しいファイル名 (files/xxxx) で削除を実行
 				return c.aiClient.DeleteFile(ctx, name)
 			}
 		}
 	}
-
-	// キャッシュミスした場合、URL 形式の fileURI では Delete API を叩けないためエラーを返す
 	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }
 
