@@ -1,7 +1,6 @@
 package generator
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -88,11 +87,13 @@ func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) (io
 	}
 
 	// 2. HTTP/HTTPS の場合
-	data, err := c.httpClient.FetchBytes(ctx, rawURL)
+	// GetStream がすでに io.ReadCloser を返しているので、そのまま返す
+	rc, err := c.httpClient.GetStream(ctx, rawURL)
 	if err != nil {
 		return nil, err
 	}
-	return io.NopCloser(bytes.NewReader(data)), nil
+
+	return rc, nil
 }
 
 // toPart は、与えられたデータが有効な画像MIMEタイプを持つ場合に genai.Part オブジェクトへ変換します。
