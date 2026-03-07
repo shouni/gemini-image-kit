@@ -1,10 +1,12 @@
 package generator
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -55,7 +57,6 @@ func (c *GeminiImageCore) IsVertexAI() bool {
 }
 
 // UploadFile は画像を Gemini File API にアップロードし、URI を返します。
-// UploadFile は画像を Gemini File API にアップロードし、URI を返します。
 func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
 	if uri, ok := c.getFromCache(fileURI); ok {
 		return uri, nil
@@ -67,31 +68,25 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 	defer rc.Close()
 
-	// 1. MIMEタイプ判定のために先頭データを読み取り
-	head := make([]byte, 512)
-	n, err := io.ReadFull(rc, head)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+	br := bufio.NewReader(rc)
+	head, err := br.Peek(512)
+	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
 	}
-	if n == 0 {
+	if len(head) == 0 {
 		return "", fmt.Errorf("画像データが空です")
 	}
 
-	mimeType := http.DetectContentType(head[:n])
+	mimeType := http.DetectContentType(head)
 	if !strings.HasPrefix(mimeType, "image/") {
 		return "", fmt.Errorf("サポートされていないファイル形式です: %s", mimeType)
 	}
 
-	stream := io.MultiReader(bytes.NewReader(head[:n]), rc)
 	var uri, fileName string
-
-	// 2. 圧縮可能な形式か判定
-	canCompress := c.compress && (mimeType == "image/jpeg" || mimeType == "image/png" || mimeType == "image/gif")
-
-	if canCompress {
-		uri, fileName, err = c.uploadCompressed(ctx, stream, mimeType, fileURI)
+	if c.compress && isCompressibleMimeType(mimeType) {
+		uri, fileName, err = c.uploadCompressed(ctx, br, mimeType, fileURI)
 	} else {
-		uri, fileName, err = c.uploadStream(ctx, stream, mimeType, fileURI)
+		uri, fileName, err = c.uploadStream(ctx, br, mimeType, fileURI)
 	}
 
 	if err != nil {
@@ -118,8 +113,6 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	}
 	defer rc.Close()
 
-	// インラインデータとして送信するため、全量をメモリに読み込む
-	// (Gemini File API利用時とは異なり、ストリーム転送は行わない点に注意)
 	rawData, err := io.ReadAll(rc)
 	if err != nil {
 		return nil
@@ -127,7 +120,11 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 
 	finalData := rawData
 	if c.compress {
-		if compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality); err == nil {
+		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
+		if err != nil {
+			// 圧縮失敗時は元のデータをそのまま使用し、必要に応じてロガーで警告
+			log.Printf("warning: failed to compress image %s: %v", rawURL, err)
+		} else {
 			finalData = compressed
 		}
 	}
@@ -193,4 +190,14 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	return nil, fmt.Errorf("no image data found in response parts")
+}
+
+// isCompressibleMimeType は、圧縮処理対象となるMIMEタイプを判定します。
+func isCompressibleMimeType(mimeType string) bool {
+	switch mimeType {
+	case "image/jpeg", "image/png", "image/gif":
+		return true
+	default:
+		return false
+	}
 }

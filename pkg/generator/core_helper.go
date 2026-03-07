@@ -3,6 +3,7 @@ package generator
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -35,20 +36,14 @@ func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 }
 
 // uploadCompressed は画像を圧縮してからアップロードします。
-// 圧縮失敗時は元のデータ(r)をそのままアップロードするフォールバックを備えています。
 func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
-	rawData, err := io.ReadAll(r)
+	// ストリームから直接圧縮処理へ渡す
+	compressed, err := imgutil.CompressToJPEG(r, ImageCompressionQuality)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to compress image: %w", err)
 	}
 
-	compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
-	if err != nil {
-		// 圧縮失敗時は元のデータで再試行
-		return c.aiClient.UploadFile(ctx, bytes.NewReader(rawData), mimeType, filepath.Base(fileURI))
-	}
-
-	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), http.DetectContentType(compressed), filepath.Base(fileURI))
+	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), "image/jpeg", filepath.Base(fileURI))
 }
 
 // uploadStream はストリームをそのままアップロードします。
