@@ -88,7 +88,7 @@ func TestCollectImageParts(t *testing.T) {
 
 	// GeminiImageCore の初期化 (reader や httpClient は nil でもこのテスト範囲なら動きますが、
 	// 本来は mockReader 等を渡すのが安全です)
-	core, _ := NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0)
+	core, _ := NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0, true)
 
 	g := &GeminiGenerator{
 		core: core,
@@ -145,7 +145,7 @@ func TestCollectImageParts(t *testing.T) {
 				backend = genai.BackendVertexAI
 			}
 			mockAI = &mockAIClient{backend: backend}
-			core, _ = NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0)
+			core, _ = NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0, true)
 			g = &GeminiGenerator{core: core}
 
 			parts := g.collectImageParts(ctx, tt.uris)

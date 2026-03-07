@@ -20,7 +20,7 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 	httpMock := &mockHTTPClient{data: []byte("fake-image-binary")}
 	reader := &mockReader{}
 
-	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour)
+	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, true)
 	require.NoError(t, err, "failed to create core")
 
 	t.Run("キャッシュがない場合はアップロードが実行される", func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 	ai := &mockAIClient{}
 	reader := &mockReader{}
 
-	core, _ := NewGeminiImageCore(ai, reader, &mockHTTPClient{}, cache, time.Hour)
+	core, _ := NewGeminiImageCore(ai, reader, &mockHTTPClient{}, cache, time.Hour, true)
 
 	t.Run("キャッシュから名前を引いて削除に成功する", func(t *testing.T) {
 		fileURL := "https://example.com/image.png"

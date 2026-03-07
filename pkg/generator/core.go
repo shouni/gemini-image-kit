@@ -18,15 +18,16 @@ import (
 
 // GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
 type GeminiImageCore struct {
-	aiClient   gemini.GenerativeModel
-	reader     remoteio.InputReader
-	httpClient httpkit.StreamDownloader
-	cache      ImageCacher
-	expiration time.Duration
+	aiClient            gemini.GenerativeModel
+	reader              remoteio.InputReader
+	httpClient          httpkit.StreamDownloader
+	cache               ImageCacher
+	expiration          time.Duration
+	useImageCompression bool
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ImageCacher, cacheTTL time.Duration) (*GeminiImageCore, error) {
+func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ImageCacher, cacheTTL time.Duration, useImageCompression bool) (*GeminiImageCore, error) {
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
 	}
@@ -38,11 +39,12 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	}
 
 	return &GeminiImageCore{
-		aiClient:   aiClient,
-		reader:     reader,
-		httpClient: httpClient,
-		cache:      cache,
-		expiration: cacheTTL,
+		aiClient:            aiClient,
+		reader:              reader,
+		httpClient:          httpClient,
+		cache:               cache,
+		expiration:          cacheTTL,
+		useImageCompression: useImageCompression,
 	}, nil
 }
 
@@ -69,7 +71,7 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	var uri, fileName string
 
 	// 2. 圧縮パイプラインまたはストリームアップロード
-	if UseImageCompression {
+	if c.useImageCompression == true {
 		// 圧縮時はメモリバッファリングが必要
 		rawData, err := io.ReadAll(rc)
 		if err != nil {
