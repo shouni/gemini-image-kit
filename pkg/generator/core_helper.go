@@ -54,7 +54,7 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 	}()
 
 	defer pr.Close()
-	return c.aiClient.UploadFile(ctx, pr, "image/jpeg", filepath.Base(fileURI))
+	return c.aiClient.UploadFile(ctx, pr, mimeType, filepath.Base(fileURI))
 }
 
 func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {

@@ -3,10 +3,10 @@ package generator
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
+	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
@@ -40,7 +40,7 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 			parts = append(parts, &genai.Part{
 				FileData: &genai.FileData{
 					FileURI:  uri.ReferenceURL, // SDKの定義通り FileURI に gs:// パスを入れる
-					MIMEType: g.guessMIMEType(uri.ReferenceURL),
+					MIMEType: imgutil.GuessMIMEType(uri.ReferenceURL),
 				},
 			})
 			continue
@@ -51,7 +51,7 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 			parts = append(parts, &genai.Part{
 				FileData: &genai.FileData{
 					FileURI:  uri.FileAPIURI,
-					MIMEType: g.guessMIMEType(uri.ReferenceURL),
+					MIMEType: imgutil.GuessMIMEType(uri.ReferenceURL),
 				},
 			})
 			continue
@@ -65,21 +65,6 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 		}
 	}
 	return parts
-}
-
-// guessMIMEType は拡張子から MIMEType を推測するヘルパー（実装例）
-func (g *GeminiGenerator) guessMIMEType(uri string) string {
-	ext := filepath.Ext(uri)
-	switch strings.ToLower(ext) {
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".png":
-		return "image/png"
-	case ".webp":
-		return "image/webp"
-	default:
-		return "image/jpeg" // フォールバック
-	}
 }
 
 // toOptions は Gemini へのリクエストオプションを構築します。
