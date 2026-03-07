@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -51,28 +52,22 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	}
 	defer rc.Close()
 
+	rawData, err := io.ReadAll(rc)
+	if err != nil {
+		return nil
+	}
+
 	// 3. 画像圧縮処理
 	var finalData []byte
 	if UseImageCompression {
-		// ストリーム（rc）を直接圧縮関数へ渡す
-		compressed, err := imgutil.CompressToJPEG(rc, ImageCompressionQuality)
+		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
 		if err == nil {
 			finalData = compressed
 		} else {
-			// 圧縮失敗時は全データ読み込みにフォールバック
-			// 再度読み込む必要がある場合は Seek が必要だが、通常はここに来る前に
-			// rc を読み込んでしまうため、圧縮失敗時に ReadAll するなら
-			// 圧縮関数へ渡す前に一度バッファリングする工夫が必要です。
-			// 今回はシンプルに ReadAll を優先します。
+			finalData = rawData
 		}
-	}
-
-	// 圧縮していない、または失敗した場合のフォールバック
-	if finalData == nil {
-		finalData, err = io.ReadAll(rc)
-		if err != nil {
-			return nil
-		}
+	} else {
+		finalData = rawData
 	}
 
 	return c.toPart(finalData)

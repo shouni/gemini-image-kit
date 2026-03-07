@@ -66,27 +66,23 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 	defer rc.Close()
 
+	rawData, err := io.ReadAll(rc)
+	if err != nil {
+		return "", fmt.Errorf("画像データの読み込みに失敗しました: %w", err)
+	}
+
 	// 2. 圧縮処理のパイプライン
 	var finalData []byte
 
 	if UseImageCompression {
-		// io.Reader を直接圧縮関数へ渡す（メモリ効率向上）
-		compressed, err := imgutil.CompressToJPEG(rc, ImageCompressionQuality)
+		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
 		if err == nil {
 			finalData = compressed
 		} else {
-			// 圧縮失敗時は全データ読み込みにフォールバック
-			finalData, err = io.ReadAll(rc)
-			if err != nil {
-				return "", err
-			}
+			finalData = rawData
 		}
 	} else {
-		// 圧縮不要なら全データ読み込み
-		finalData, err = io.ReadAll(rc)
-		if err != nil {
-			return "", err
-		}
+		finalData = rawData
 	}
 
 	mimeType := http.DetectContentType(finalData)
