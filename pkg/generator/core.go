@@ -17,16 +17,16 @@ import (
 
 // GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
 type GeminiImageCore struct {
-	aiClient            gemini.GenerativeModel
-	reader              remoteio.InputReader
-	httpClient          httpkit.StreamDownloader
-	cache               ImageCacher
-	expiration          time.Duration
-	useImageCompression bool
+	aiClient   gemini.GenerativeModel
+	reader     remoteio.InputReader
+	httpClient httpkit.StreamDownloader
+	cache      ImageCacher
+	expiration time.Duration
+	compress   bool
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ImageCacher, cacheTTL time.Duration, useImageCompression bool) (*GeminiImageCore, error) {
+func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
 	}
@@ -38,12 +38,12 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	}
 
 	return &GeminiImageCore{
-		aiClient:            aiClient,
-		reader:              reader,
-		httpClient:          httpClient,
-		cache:               cache,
-		expiration:          cacheTTL,
-		useImageCompression: useImageCompression,
+		aiClient:   aiClient,
+		reader:     reader,
+		httpClient: httpClient,
+		cache:      cache,
+		expiration: cacheTTL,
+		compress:   compress,
 	}, nil
 }
 
@@ -65,7 +65,7 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	defer rc.Close()
 
 	var uri, fileName string
-	if c.useImageCompression {
+	if c.compress {
 		uri, fileName, err = c.uploadCompressed(ctx, rc, fileURI)
 	} else {
 		uri, fileName, err = c.uploadStream(ctx, rc, fileURI)
@@ -164,7 +164,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 
 	// 3. 画像圧縮処理
 	finalData := rawData
-	if c.useImageCompression {
+	if c.compress {
 		if compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality); err == nil {
 			finalData = compressed
 		}
