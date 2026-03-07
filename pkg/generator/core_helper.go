@@ -35,6 +35,11 @@ func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: data}}
 }
 
+// uploadStream はストリームをそのままアップロードします。
+func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
+	return c.aiClient.UploadFile(ctx, r, mimeType, filepath.Base(fileURI))
+}
+
 // uploadCompressed は画像を圧縮してからアップロードします。
 func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
 	img, _, err := image.Decode(r)
@@ -50,11 +55,6 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 
 	defer pr.Close()
 	return c.aiClient.UploadFile(ctx, pr, "image/jpeg", filepath.Base(fileURI))
-}
-
-// uploadStream はストリームをそのままアップロードします。
-func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
-	return c.aiClient.UploadFile(ctx, r, mimeType, filepath.Base(fileURI))
 }
 
 func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {

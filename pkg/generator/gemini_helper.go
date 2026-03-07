@@ -84,7 +84,12 @@ func (g *GeminiGenerator) guessMIMEType(uri string) string {
 
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
-	var defaultSafetySettings = []*genai.SafetySetting{
+	personGeneration := gemini.PersonGenerationUnspecified
+	if g.core.IsVertexAI() {
+		personGeneration = gemini.PersonGenerationAllowAll
+	}
+
+	defaultSafetySettings := []*genai.SafetySetting{
 		{Category: genai.HarmCategoryHarassment, Threshold: genai.HarmBlockThresholdBlockNone},
 		{Category: genai.HarmCategoryHateSpeech, Threshold: genai.HarmBlockThresholdBlockNone},
 		{Category: genai.HarmCategorySexuallyExplicit, Threshold: genai.HarmBlockThresholdBlockNone},
@@ -96,7 +101,7 @@ func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.Gen
 		ImageSize:        size,
 		SystemPrompt:     sp,
 		Seed:             seed,
-		PersonGeneration: gemini.PersonGenerationAllowAll,
+		PersonGeneration: personGeneration,
 		SafetySettings:   defaultSafetySettings,
 	}
 }

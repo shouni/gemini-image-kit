@@ -9,9 +9,11 @@ import (
 	"google.golang.org/genai"
 )
 
-// AssetManager は File API や GCS とのやり取りを担当します。
+// AssetManager は File APIとのやり取りを担当します。
 type AssetManager interface {
+	// UploadFile は指定された fileURI の画像を Gemini File API にアップロードし、アップロード先の URI を返します。
 	UploadFile(ctx context.Context, fileURI string) (string, error)
+	// DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
 	DeleteFile(ctx context.Context, fileURI string) error
 	// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
 	IsVertexAI() bool
