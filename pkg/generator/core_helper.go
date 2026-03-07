@@ -48,6 +48,7 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 		pw.CloseWithError(err)
 	}()
 
+	defer pr.Close()
 	return c.aiClient.UploadFile(ctx, pr, "image/jpeg", filepath.Base(fileURI))
 }
 

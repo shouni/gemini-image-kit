@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -121,10 +120,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	finalData := rawData
 	if c.compress {
 		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
-		if err != nil {
-			// 圧縮失敗時は元のデータをそのまま使用し、必要に応じてロガーで警告
-			log.Printf("warning: failed to compress image %s: %v", rawURL, err)
-		} else {
+		if err == nil {
 			finalData = compressed
 		}
 	}
@@ -195,7 +191,7 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 // isCompressibleMimeType は、圧縮処理対象となるMIMEタイプを判定します。
 func isCompressibleMimeType(mimeType string) bool {
 	switch mimeType {
-	case "image/jpeg", "image/png", "image/gif":
+	case "image/png", "image/gif":
 		return true
 	default:
 		return false
