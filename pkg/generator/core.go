@@ -71,7 +71,7 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	var uri, fileName string
 
 	// 2. 圧縮パイプラインまたはストリームアップロード
-	if c.useImageCompression == true {
+	if c.useImageCompression {
 		// 圧縮時はメモリバッファリングが必要
 		rawData, err := io.ReadAll(rc)
 		if err != nil {
@@ -93,7 +93,9 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
 		}
-
+		if n == 0 {
+			return "", fmt.Errorf("画像データが空です")
+		}
 		mimeType := http.DetectContentType(head[:n])
 		stream := io.MultiReader(bytes.NewReader(head[:n]), rc)
 

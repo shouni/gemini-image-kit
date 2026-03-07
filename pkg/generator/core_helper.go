@@ -58,16 +58,11 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	}
 
 	// 3. 画像圧縮処理
-	var finalData []byte
+	finalData := rawData
 	if c.useImageCompression {
-		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
-		if err == nil {
+		if compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality); err == nil {
 			finalData = compressed
-		} else {
-			finalData = rawData
 		}
-	} else {
-		finalData = rawData
 	}
 
 	return c.toPart(finalData)
