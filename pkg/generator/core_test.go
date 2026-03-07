@@ -17,7 +17,8 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 	// mocks_test.go のモックを利用
 	cache := &mockCache{data: make(map[string]any)}
 	ai := &mockAIClient{}
-	httpMock := &mockHTTPClient{data: []byte("fake-image-binary")}
+	pngHeader := []byte("\x89PNG\r\n\x1a\n")
+	httpMock := &mockHTTPClient{data: append(pngHeader, []byte("fake-image-binary")...)}
 	reader := &mockReader{}
 
 	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, false)

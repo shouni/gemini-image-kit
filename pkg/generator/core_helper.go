@@ -3,7 +3,6 @@ package generator
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -35,32 +34,26 @@ func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: data}}
 }
 
-// uploadCompressed は画像を圧縮してからアップロードする処理です。
-func (c *GeminiImageCore) uploadCompressed(ctx context.Context, rc io.Reader, fileURI string) (string, string, error) {
-	compressed, err := imgutil.CompressToJPEG(rc, ImageCompressionQuality)
+// uploadCompressed は画像を圧縮してからアップロードします。
+// 圧縮失敗時は元のデータ(r)をそのままアップロードするフォールバックを備えています。
+func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
+	rawData, err := io.ReadAll(r)
 	if err != nil {
-		return "", "", fmt.Errorf("画像の圧縮に失敗しました: %w", err)
+		return "", "", err
 	}
 
-	mimeType := http.DetectContentType(compressed)
-	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), mimeType, filepath.Base(fileURI))
+	compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
+	if err != nil {
+		// 圧縮失敗時は元のデータで再試行
+		return c.aiClient.UploadFile(ctx, bytes.NewReader(rawData), mimeType, filepath.Base(fileURI))
+	}
+
+	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), http.DetectContentType(compressed), filepath.Base(fileURI))
 }
 
-// uploadStream はストリームをそのままアップロードする処理です。
-func (c *GeminiImageCore) uploadStream(ctx context.Context, rc io.Reader, fileURI string) (string, string, error) {
-	head := make([]byte, 512)
-	n, err := io.ReadFull(rc, head)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		return "", "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
-	}
-	if n == 0 {
-		return "", "", fmt.Errorf("画像データが空です")
-	}
-
-	mimeType := http.DetectContentType(head[:n])
-	stream := io.MultiReader(bytes.NewReader(head[:n]), rc)
-
-	return c.aiClient.UploadFile(ctx, stream, mimeType, filepath.Base(fileURI))
+// uploadStream はストリームをそのままアップロードします。
+func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
+	return c.aiClient.UploadFile(ctx, r, mimeType, filepath.Base(fileURI))
 }
 
 func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {

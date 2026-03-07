@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
@@ -53,6 +55,7 @@ func (c *GeminiImageCore) IsVertexAI() bool {
 }
 
 // UploadFile は画像を Gemini File API にアップロードし、URI を返します。
+// UploadFile は画像を Gemini File API にアップロードし、URI を返します。
 func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
 	if uri, ok := c.getFromCache(fileURI); ok {
 		return uri, nil
@@ -64,11 +67,31 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 	defer rc.Close()
 
+	// 1. MIMEタイプ判定のために先頭データを読み取り
+	head := make([]byte, 512)
+	n, err := io.ReadFull(rc, head)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+	}
+	if n == 0 {
+		return "", fmt.Errorf("画像データが空です")
+	}
+
+	mimeType := http.DetectContentType(head[:n])
+	if !strings.HasPrefix(mimeType, "image/") {
+		return "", fmt.Errorf("サポートされていないファイル形式です: %s", mimeType)
+	}
+
+	stream := io.MultiReader(bytes.NewReader(head[:n]), rc)
 	var uri, fileName string
-	if c.compress {
-		uri, fileName, err = c.uploadCompressed(ctx, rc, fileURI)
+
+	// 2. 圧縮可能な形式か判定
+	canCompress := c.compress && (mimeType == "image/jpeg" || mimeType == "image/png" || mimeType == "image/gif")
+
+	if canCompress {
+		uri, fileName, err = c.uploadCompressed(ctx, stream, mimeType, fileURI)
 	} else {
-		uri, fileName, err = c.uploadStream(ctx, rc, fileURI)
+		uri, fileName, err = c.uploadStream(ctx, stream, mimeType, fileURI)
 	}
 
 	if err != nil {
@@ -77,6 +100,39 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 
 	c.saveToCache(fileURI, uri, fileName)
 	return uri, nil
+}
+
+// PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
+func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
+	if c.cache != nil {
+		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
+			if uri, ok := val.(string); ok {
+				return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
+			}
+		}
+	}
+
+	rc, err := c.fetchImageData(ctx, rawURL)
+	if err != nil {
+		return nil
+	}
+	defer rc.Close()
+
+	// インラインデータとして送信するため、全量をメモリに読み込む
+	// (Gemini File API利用時とは異なり、ストリーム転送は行わない点に注意)
+	rawData, err := io.ReadAll(rc)
+	if err != nil {
+		return nil
+	}
+
+	finalData := rawData
+	if c.compress {
+		if compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality); err == nil {
+			finalData = compressed
+		}
+	}
+
+	return c.toPart(finalData)
 }
 
 // DeleteFile はキャッシュされたファイル名を使用して Gemini File API からファイルを削除します。
@@ -137,38 +193,4 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	return nil, fmt.Errorf("no image data found in response parts")
-}
-
-// PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
-func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// 1. File API キャッシュチェック
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
-			if uri, ok := val.(string); ok {
-				return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
-			}
-		}
-	}
-
-	// 2. 画像の取得（ストリーム処理）
-	rc, err := c.fetchImageData(ctx, rawURL)
-	if err != nil {
-		return nil
-	}
-	defer rc.Close()
-
-	rawData, err := io.ReadAll(rc)
-	if err != nil {
-		return nil
-	}
-
-	// 3. 画像圧縮処理
-	finalData := rawData
-	if c.compress {
-		if compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality); err == nil {
-			finalData = compressed
-		}
-	}
-
-	return c.toPart(finalData)
 }
