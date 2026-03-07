@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/shouni/go-gemini-client v1.1.0
-	github.com/shouni/go-http-kit v1.3.1
+	github.com/shouni/go-http-kit v1.3.2
 	github.com/shouni/go-remote-io v1.2.1
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/genai v1.49.0
