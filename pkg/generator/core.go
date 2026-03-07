@@ -47,6 +47,11 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	}, nil
 }
 
+// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
+func (c *GeminiImageCore) IsVertexAI() bool {
+	return c.aiClient.IsVertexAI()
+}
+
 // UploadFile は画像を Gemini File API にアップロードし、URI を返します。
 func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
 	if uri, ok := c.getFromCache(fileURI); ok {
@@ -86,11 +91,6 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }
 
-// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
-func (c *GeminiImageCore) IsVertexAI() bool {
-	return c.aiClient.IsVertexAI()
-}
-
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
 func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
 	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, opts)
@@ -108,6 +108,35 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 		MimeType: out.MimeType,
 		UsedSeed: out.UsedSeed,
 	}, nil
+}
+
+// ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
+func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
+	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
+		return nil, fmt.Errorf("invalid or empty response from Gemini")
+	}
+
+	candidate := resp.RawResponse.Candidates[0]
+
+	if candidate.FinishReason != genai.FinishReasonStop && candidate.FinishReason != genai.FinishReasonUnspecified {
+		return nil, fmt.Errorf("generation failed with FinishReason: %s", candidate.FinishReason)
+	}
+
+	if candidate.Content == nil {
+		return nil, fmt.Errorf("no content found in candidate")
+	}
+
+	for _, part := range candidate.Content.Parts {
+		if part.InlineData != nil {
+			return &ImageOutput{
+				Data:     part.InlineData.Data,
+				MimeType: part.InlineData.MIMEType,
+				UsedSeed: seed,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no image data found in response parts")
 }
 
 // PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。

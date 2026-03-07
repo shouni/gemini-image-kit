@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
-	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
@@ -36,50 +35,15 @@ func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: data}}
 }
 
-// ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
-func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
-	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
-		return nil, fmt.Errorf("invalid or empty response from Gemini")
-	}
-
-	candidate := resp.RawResponse.Candidates[0]
-
-	if candidate.FinishReason != genai.FinishReasonStop && candidate.FinishReason != genai.FinishReasonUnspecified {
-		return nil, fmt.Errorf("generation failed with FinishReason: %s", candidate.FinishReason)
-	}
-
-	if candidate.Content == nil {
-		return nil, fmt.Errorf("no content found in candidate")
-	}
-
-	for _, part := range candidate.Content.Parts {
-		if part.InlineData != nil {
-			return &ImageOutput{
-				Data:     part.InlineData.Data,
-				MimeType: part.InlineData.MIMEType,
-				UsedSeed: seed,
-			}, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no image data found in response parts")
-}
-
 // uploadCompressed は画像を圧縮してからアップロードする処理です。
 func (c *GeminiImageCore) uploadCompressed(ctx context.Context, rc io.Reader, fileURI string) (string, string, error) {
-	rawData, err := io.ReadAll(rc)
+	compressed, err := imgutil.CompressToJPEG(rc, ImageCompressionQuality)
 	if err != nil {
-		return "", "", fmt.Errorf("画像データの読み込みに失敗しました: %w", err)
+		return "", "", fmt.Errorf("画像の圧縮に失敗しました: %w", err)
 	}
 
-	compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
-	finalData := rawData
-	if err == nil {
-		finalData = compressed
-	}
-
-	mimeType := http.DetectContentType(finalData)
-	return c.aiClient.UploadFile(ctx, bytes.NewReader(finalData), mimeType, filepath.Base(fileURI))
+	mimeType := http.DetectContentType(compressed)
+	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), mimeType, filepath.Base(fileURI))
 }
 
 // uploadStream はストリームをそのままアップロードする処理です。
