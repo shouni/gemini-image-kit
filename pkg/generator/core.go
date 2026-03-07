@@ -55,7 +55,7 @@ func (c *GeminiImageCore) IsVertexAI() bool {
 	return c.aiClient.IsVertexAI()
 }
 
-// UploadFile は画像を Gemini File API にアップロードし、URI を返します。
+// UploadFile は指定された fileURI の画像を Gemini File API にアップロードし、アップロード先の URI を返します。
 func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
 	if uri, ok := c.getFromCache(fileURI); ok {
 		return uri, nil
@@ -82,7 +82,7 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 
 	var uri, fileName string
-	if c.compress && isCompressibleMimeType(mimeType) {
+	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
 		uri, fileName, err = c.uploadCompressed(ctx, br, mimeType, fileURI)
 	} else {
 		uri, fileName, err = c.uploadStream(ctx, br, mimeType, fileURI)
@@ -94,6 +94,18 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 
 	c.saveToCache(fileURI, uri, fileName)
 	return uri, nil
+}
+
+// DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
+func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
+	if c.cache != nil {
+		if val, ok := c.cache.Get(cacheKeyFileAPIName + fileURI); ok {
+			if name, ok := val.(string); ok {
+				return c.aiClient.DeleteFile(ctx, name)
+			}
+		}
+	}
+	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }
 
 // PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
@@ -126,18 +138,6 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 	}
 
 	return c.toPart(finalData)
-}
-
-// DeleteFile はキャッシュされたファイル名を使用して Gemini File API からファイルを削除します。
-func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIName + fileURI); ok {
-			if name, ok := val.(string); ok {
-				return c.aiClient.DeleteFile(ctx, name)
-			}
-		}
-	}
-	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }
 
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
@@ -186,14 +186,4 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	return nil, fmt.Errorf("no image data found in response parts")
-}
-
-// isCompressibleMimeType は、圧縮処理対象となるMIMEタイプを判定します。
-func isCompressibleMimeType(mimeType string) bool {
-	switch mimeType {
-	case "image/png", "image/gif":
-		return true
-	default:
-		return false
-	}
 }
