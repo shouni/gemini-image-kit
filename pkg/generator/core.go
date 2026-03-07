@@ -66,8 +66,9 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 		return "", err
 	}
 	defer rc.Close()
-
 	br := bufio.NewReader(rc)
+
+	// 1. ファイルの中身を少しだけ先読み（バリデーション用）
 	head, err := br.Peek(512)
 	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
@@ -76,11 +77,13 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 		return "", fmt.Errorf("画像データが空です")
 	}
 
-	mimeType := http.DetectContentType(head)
-	if !strings.HasPrefix(mimeType, "image/") {
-		return "", fmt.Errorf("サポートされていないファイル形式です: %s", mimeType)
+	// 2. コンテンツベースで「画像であること」を厳格にチェック
+	detectedMime := http.DetectContentType(head)
+	if !strings.HasPrefix(detectedMime, "image/") {
+		return "", fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
 	}
 
+	mimeType := imgutil.GuessMIMEType(fileURI)
 	var uri, fileName string
 	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
 		uri, fileName, err = c.uploadCompressed(ctx, br, mimeType, fileURI)

@@ -8,31 +8,6 @@ import (
 	"google.golang.org/genai"
 )
 
-func TestGuessMIMEType(t *testing.T) {
-	g := &GeminiGenerator{}
-
-	tests := []struct {
-		uri      string
-		expected string
-	}{
-		{"gs://bucket/image.jpg", "image/jpeg"},
-		{"https://example.com/photo.JPEG", "image/jpeg"},
-		{"path/to/icon.png", "image/png"},
-		{"image.webp", "image/webp"},
-		{"document.pdf", "image/jpeg"}, // 未対応拡張子はフォールバック
-		{"no_extension", "image/jpeg"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.uri, func(t *testing.T) {
-			got := g.guessMIMEType(tt.uri)
-			if got != tt.expected {
-				t.Errorf("guessMIMEType(%q) = %q; want %q", tt.uri, got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestBuildFinalPrompt(t *testing.T) {
 	// 実装側の negativePromptSeparator と一致させる
 	const sep = negativePromptSeparator
