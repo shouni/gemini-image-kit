@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shouni/gemini-image-kit/pkg/domain"
@@ -65,6 +67,21 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 	defer rc.Close()
 	br := bufio.NewReader(rc)
+
+	// 1. ファイルの中身を少しだけ先読み（バリデーション用）
+	head, err := br.Peek(512)
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+	}
+	if len(head) == 0 {
+		return "", fmt.Errorf("画像データが空です")
+	}
+
+	// 2. コンテンツベースで「画像であること」を厳格にチェック
+	detectedMime := http.DetectContentType(head)
+	if !strings.HasPrefix(detectedMime, "image/") {
+		return "", fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+	}
 
 	mimeType := imgutil.GuessMIMEType(fileURI)
 	var uri, fileName string

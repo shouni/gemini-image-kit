@@ -37,16 +37,18 @@
 ```text
 pkg/
 ├── domain/              # 共通ドメインモデル
-│   └── image.go         # リクエスト/レスポンスの型定義
+│   ├── image.go         # リクエスト/レスポンス、ImageURI等の型定義
+│   └── image_helpers.go # ドメインモデルに関連するヘルパー関数
 ├── generator/           # 画像生成のコアロジック
 │   ├── interfaces.go    # ImageExecutor / ImageCacher 等の抽象化定義
-│   ├── gemini.go        # 高レベルジェネレーター（公開メソッド群）
+│   ├── gemini.go        # 高レベルジェネレーター（公開 API / Adapter 実装）
 │   ├── gemini_helper.go # MIME推測、パーツ収集、プロンプト構築ロジック
 │   ├── core.go          # GeminiImageCore（File API のライフサイクル管理）
 │   ├── core_helper.go   # 画像フェッチ・パース処理
-│   └── types.go         # パッケージ内部用定数・型定義
+│   └── types.go         # 内部用定数・型定義
 └── imgutil/             # 画像処理ユーティリティ
-    └── compressor.go    # 送信前画像圧縮（JPEG最適化）
+    ├── mime.go          # MIMEタイプ判定ロジック
+    └── compressor.go    # 送信前画像圧縮（JPEG最適化等）
 ```
 
 ---
