@@ -1,15 +1,15 @@
 package generator
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
 
-	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
@@ -37,13 +37,18 @@ func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
 
 // uploadCompressed は画像を圧縮してからアップロードします。
 func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
-	// ストリームから直接圧縮処理へ渡す
-	compressed, err := imgutil.CompressToJPEG(r, ImageCompressionQuality)
+	img, _, err := image.Decode(r)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to compress image: %w", err)
+		return "", "", fmt.Errorf("failed to decode image for compression: %w", err)
 	}
 
-	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), "image/jpeg", filepath.Base(fileURI))
+	pr, pw := io.Pipe()
+	go func() {
+		err := jpeg.Encode(pw, img, &jpeg.Options{Quality: ImageCompressionQuality})
+		pw.CloseWithError(err)
+	}()
+
+	return c.aiClient.UploadFile(ctx, pr, "image/jpeg", filepath.Base(fileURI))
 }
 
 // uploadStream はストリームをそのままアップロードします。
