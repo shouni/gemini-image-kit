@@ -3,11 +3,7 @@ package generator
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/shouni/go-gemini-client/pkg/gemini"
@@ -33,7 +29,12 @@ func (m *mockAIClient) IsVertexAI() bool {
 	return m.backend == genai.BackendVertexAI
 }
 
-func (m *mockAIClient) UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error) {
+func (m *mockAIClient) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error) {
+	_, err := io.ReadAll(r)
+	if err != nil {
+		return "", "", err
+	}
+
 	m.uploadCalled = true
 	return MockFileUploadURI, MockFileUploadName, nil
 }
@@ -96,54 +97,22 @@ type mockHTTPClient struct {
 	err  error
 }
 
-func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(bytes.NewReader(m.data)),
-	}, nil
-}
-
-func (m *mockHTTPClient) DoRequest(req *http.Request) ([]byte, error) {
-	return m.data, m.err
-}
-
-func (m *mockHTTPClient) FetchBytes(ctx context.Context, url string) ([]byte, error) {
-	if ok, err := m.IsSafeURL(url); !ok {
-		return nil, fmt.Errorf("SSRF detection: %w", err)
-	}
-	return m.data, m.err
-}
-
-func (m *mockHTTPClient) FetchAndDecodeJSON(ctx context.Context, url string, v any) error {
+// FetchStream の実装
+func (m *mockHTTPClient) FetchStream(ctx context.Context, url string, fn func(io.Reader) error) error {
 	if m.err != nil {
 		return m.err
 	}
-	return json.Unmarshal(m.data, v)
+	// テスト用に m.data を流し込む
+	return fn(bytes.NewReader(m.data))
 }
 
-func (m *mockHTTPClient) PostJSONAndFetchBytes(ctx context.Context, url string, data any) ([]byte, error) {
-	return m.data, m.err
-}
-
-func (m *mockHTTPClient) PostRawBodyAndFetchBytes(ctx context.Context, url string, body []byte, contentType string) ([]byte, error) {
-	return m.data, m.err
-}
-
-func (m *mockHTTPClient) IsSafeURL(urlStr string) (bool, error) {
-	if strings.Contains(urlStr, "127.0.0.1") || strings.Contains(urlStr, "localhost") {
-		return false, fmt.Errorf("restricted network access")
+// GetStream の実装
+func (m *mockHTTPClient) GetStream(ctx context.Context, url string) (io.ReadCloser, error) {
+	if m.err != nil {
+		return nil, m.err
 	}
-	if urlStr == "" {
-		return false, fmt.Errorf("empty URL")
-	}
-	return true, nil
-}
-
-func (m *mockHTTPClient) IsSecureServiceURL(serviceURL string) bool {
-	return strings.Contains(serviceURL, "localhost") || strings.HasPrefix(serviceURL, "https://")
+	// ストリームを返すため、io.NopCloser でラップする
+	return io.NopCloser(bytes.NewReader(m.data)), nil
 }
 
 // --- Cache Mock ---

@@ -24,8 +24,9 @@
     * GCS や外部 URI からの参照時、拡張子に基づいて `MIMEType` を自動推測。SDK の `Required` 制約を透過的に解決します。
 * **🛡️ SSRF Protected**:
     * 外部 URL 取得時、名前解決後の IP レベルで内部ネットワークへのアクセスを遮断するバリデーション。
-* **⚡️ Built-in Image Optimization**:
-    * 送信前に画像をインメモリで最適化（JPEG 圧縮）し、ペイロードサイズを抑えて高速な生成を実現。
+* **⚡️ Optimized Image Handling**:
+    * **Stream-Based Processing**: `bufio.Reader` と `io.Pipe` を活用し、画像を全量メモリに読み込まずにストリーム転送。巨大な画像でもメモリ消費を最小限に抑え、アップロードのオーバーヘッドを劇的に改善。
+    * **Selective Optimization**: 圧縮が不要な場合はストリームで直接転送、必要な場合のみJPEG圧縮を適用するハイブリッド設計により、効率とコスト（API転送量）のバランスを動的に最適化。
 * **🧬 Robust Design**:
     * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
 

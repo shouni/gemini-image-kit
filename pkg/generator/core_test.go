@@ -17,10 +17,11 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 	// mocks_test.go のモックを利用
 	cache := &mockCache{data: make(map[string]any)}
 	ai := &mockAIClient{}
-	httpMock := &mockHTTPClient{data: []byte("fake-image-binary")}
+	pngHeader := []byte("\x89PNG\r\n\x1a\n")
+	httpMock := &mockHTTPClient{data: append(pngHeader, []byte("fake-image-binary")...)}
 	reader := &mockReader{}
 
-	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour)
+	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, false)
 	require.NoError(t, err, "failed to create core")
 
 	t.Run("キャッシュがない場合はアップロードが実行される", func(t *testing.T) {
@@ -63,7 +64,8 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 	ai := &mockAIClient{}
 	reader := &mockReader{}
 
-	core, _ := NewGeminiImageCore(ai, reader, &mockHTTPClient{}, cache, time.Hour)
+	// 修正: 圧縮設定を false に統一
+	core, _ := NewGeminiImageCore(ai, reader, &mockHTTPClient{}, cache, time.Hour, false)
 
 	t.Run("キャッシュから名前を引いて削除に成功する", func(t *testing.T) {
 		fileURL := "https://example.com/image.png"

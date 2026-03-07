@@ -40,7 +40,8 @@ func TestCompressToJPEG(t *testing.T) {
 	t.Run("正常なPNG画像をJPEGに圧縮できること", func(t *testing.T) {
 		pngData := createDummyImageData(t, "png")
 
-		got, err := CompressToJPEG(pngData, 75)
+		// bytes.NewReader を通して io.Reader として渡す
+		got, err := CompressToJPEG(bytes.NewReader(pngData), 75)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -60,7 +61,8 @@ func TestCompressToJPEG(t *testing.T) {
 
 	t.Run("不正なデータを与えた場合にエラーを返すこと", func(t *testing.T) {
 		invalidData := []byte("this is not an image")
-		_, err := CompressToJPEG(invalidData, 75)
+		// bytes.NewReader を使用
+		_, err := CompressToJPEG(bytes.NewReader(invalidData), 75)
 		if err == nil {
 			t.Error("expected error for invalid data, but got nil")
 		}
@@ -69,8 +71,9 @@ func TestCompressToJPEG(t *testing.T) {
 	t.Run("Quality設定によってサイズが変化すること", func(t *testing.T) {
 		input := createDummyImageData(t, "png")
 
-		highQuality, _ := CompressToJPEG(input, 100)
-		lowQuality, _ := CompressToJPEG(input, 10)
+		// bytes.NewReader を使用
+		highQuality, _ := CompressToJPEG(bytes.NewReader(input), 100)
+		lowQuality, _ := CompressToJPEG(bytes.NewReader(input), 10)
 
 		if len(lowQuality) >= len(highQuality) {
 			t.Errorf("low quality size (%d) should be smaller than high quality size (%d)", len(lowQuality), len(highQuality))

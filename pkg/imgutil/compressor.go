@@ -6,12 +6,13 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
+	"io"
 )
 
-// CompressToJPEG は画像データ（PNG, GIF, JPEG等）をJPEG形式に圧縮します。
+// CompressToJPEG は画像データ（Reader）を読み込み、JPEG形式でエンコードしてバイト列を返します。
 // image.Decodeがサポートするフォーマットに対応しています。
-func CompressToJPEG(data []byte, quality int) ([]byte, error) {
-	img, _, err := image.Decode(bytes.NewReader(data))
+func CompressToJPEG(r io.Reader, quality int) ([]byte, error) {
+	img, _, err := image.Decode(r)
 	if err != nil {
 		return nil, err
 	}
