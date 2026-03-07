@@ -97,8 +97,6 @@ type mockHTTPClient struct {
 	err  error
 }
 
-// (既存の Do, DoRequest, FetchBytes, FetchAndDecodeJSON, PostJSONAndFetchBytes, PostRawBodyAndFetchBytes, IsSafeURL, IsSecureServiceURL はそのまま)
-
 // FetchStream の実装
 func (m *mockHTTPClient) FetchStream(ctx context.Context, url string, fn func(io.Reader) error) error {
 	if m.err != nil {

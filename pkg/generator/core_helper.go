@@ -6,67 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
 )
-
-// ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
-func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
-	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	out, err := c.ParseToResponse(resp, domain.DereferenceSeed(opts.Seed))
-	if err != nil {
-		return nil, err
-	}
-
-	return &domain.ImageResponse{
-		Data:     out.Data,
-		MimeType: out.MimeType,
-		UsedSeed: out.UsedSeed,
-	}, nil
-}
-
-// PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
-func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	// 1. File API キャッシュチェック
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
-			if uri, ok := val.(string); ok {
-				return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
-			}
-		}
-	}
-
-	// 2. 画像の取得（ストリーム処理）
-	rc, err := c.fetchImageData(ctx, rawURL)
-	if err != nil {
-		return nil
-	}
-	defer rc.Close()
-
-	rawData, err := io.ReadAll(rc)
-	if err != nil {
-		return nil
-	}
-
-	// 3. 画像圧縮処理
-	finalData := rawData
-	if c.useImageCompression {
-		if compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality); err == nil {
-			finalData = compressed
-		}
-	}
-
-	return c.toPart(finalData)
-}
 
 // fetchImageData は、指定されたURLまたはCloud Storageから画像データ読み込み用の Reader を返します。
 // 呼び出し側は、読み込み終了後に必ず Close() を呼び出す必要があります。
@@ -116,4 +63,56 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 	}
 
 	return nil, fmt.Errorf("no image data found in response parts")
+}
+
+// uploadCompressed は画像を圧縮してからアップロードする処理です。
+func (c *GeminiImageCore) uploadCompressed(ctx context.Context, rc io.Reader, fileURI string) (string, string, error) {
+	rawData, err := io.ReadAll(rc)
+	if err != nil {
+		return "", "", fmt.Errorf("画像データの読み込みに失敗しました: %w", err)
+	}
+
+	compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
+	finalData := rawData
+	if err == nil {
+		finalData = compressed
+	}
+
+	mimeType := http.DetectContentType(finalData)
+	return c.aiClient.UploadFile(ctx, bytes.NewReader(finalData), mimeType, filepath.Base(fileURI))
+}
+
+// uploadStream はストリームをそのままアップロードする処理です。
+func (c *GeminiImageCore) uploadStream(ctx context.Context, rc io.Reader, fileURI string) (string, string, error) {
+	head := make([]byte, 512)
+	n, err := io.ReadFull(rc, head)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+	}
+	if n == 0 {
+		return "", "", fmt.Errorf("画像データが空です")
+	}
+
+	mimeType := http.DetectContentType(head[:n])
+	stream := io.MultiReader(bytes.NewReader(head[:n]), rc)
+
+	return c.aiClient.UploadFile(ctx, stream, mimeType, filepath.Base(fileURI))
+}
+
+func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {
+	if c.cache != nil {
+		if val, ok := c.cache.Get(cacheKeyFileAPIURI + fileURI); ok {
+			if uri, ok := val.(string); ok {
+				return uri, true
+			}
+		}
+	}
+	return "", false
+}
+
+func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
+	if c.cache != nil {
+		c.cache.Set(cacheKeyFileAPIURI+fileURI, uri, c.expiration)
+		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)
+	}
 }
