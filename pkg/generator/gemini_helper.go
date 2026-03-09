@@ -70,11 +70,8 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
 	threshold := genai.HarmBlockThresholdOff
-	personGeneration := gemini.PersonGenerationAllowAdult
-
 	if g.core.IsVertexAI() {
 		threshold = genai.HarmBlockThresholdBlockNone
-		personGeneration = gemini.PersonGenerationAllowAll
 	}
 
 	defaultSafetySettings := []*genai.SafetySetting{
@@ -89,7 +86,7 @@ func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.Gen
 		ImageSize:        size,
 		SystemPrompt:     sp,
 		Seed:             seed,
-		PersonGeneration: personGeneration,
+		PersonGeneration: gemini.PersonGenerationAllowAll,
 		SafetySettings:   defaultSafetySettings,
 	}
 }
