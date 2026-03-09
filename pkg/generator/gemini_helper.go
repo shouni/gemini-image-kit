@@ -36,7 +36,7 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 
 	for _, uri := range uris {
 		// 1. Vertex AI モードで、GCS URI (gs://) の場合
-		if g.core.GetGenerativeModel().IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
+		if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
 			parts = append(parts, &genai.Part{
 				FileData: &genai.FileData{
 					FileURI:  uri.ReferenceURL, // SDKの定義通り FileURI に gs:// パスを入れる
@@ -72,7 +72,7 @@ func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.Gen
 	threshold := genai.HarmBlockThresholdOff
 	personGeneration := gemini.PersonGenerationAllowAdult
 
-	if g.core.GetGenerativeModel().IsVertexAI() {
+	if g.core.IsVertexAI() {
 		threshold = genai.HarmBlockThresholdBlockNone
 		personGeneration = gemini.PersonGenerationAllowAll
 	}

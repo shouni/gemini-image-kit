@@ -35,9 +35,9 @@ func NewGeminiGenerator(model, qualityModel string, core domain.ImageExecutor) (
 	}, nil
 }
 
-// GetImageExecutor は、ImageExecutorを取得。
-func (g *GeminiGenerator) GetImageExecutor() domain.ImageExecutor {
-	return g.core
+// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
+func (g *GeminiGenerator) IsVertexAI() bool {
+	return g.core.IsVertexAI()
 }
 
 // GenerateMangaPanel は単一のパネル画像を生成します。
