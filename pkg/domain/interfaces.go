@@ -1,15 +1,14 @@
-package generator
+package domain
 
 import (
 	"context"
 	"time"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"google.golang.org/genai"
 )
 
-// Backend は、バックエンドのメソッドを公開する
+// Backend は、利用中のバックエンドサービス（Vertex AIなど）に関する状態や情報を提供するインターフェースです。
 type Backend interface {
 	// IsVertexAI は、Vertex AIを使用しているかを確認します。
 	IsVertexAI() bool
@@ -18,9 +17,9 @@ type Backend interface {
 // ImageGenerator は、ビジネスロジック層が利用する統合窓口です。
 type ImageGenerator interface {
 	// GenerateMangaPanel は、提供されたプロンプトと構成パラメータに基づいて、単一のマンガパネル画像を生成します。
-	GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error)
+	GenerateMangaPanel(ctx context.Context, req ImageGenerationRequest) (*ImageResponse, error)
 	// GenerateMangaPage は、提供されたプロンプトと構成パラメータに基づいてマンガページのイメージを生成します。
-	GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error)
+	GenerateMangaPage(ctx context.Context, req ImagePageRequest) (*ImageResponse, error)
 	Backend
 }
 
@@ -35,7 +34,7 @@ type AssetManager interface {
 // ImageExecutor は、画像生成リクエストを処理し、画像関連データを準備するためのメソッドを定義するインターフェースです。
 type ImageExecutor interface {
 	// ExecuteRequest は、指定されたパラメータで画像生成リクエストを実行し、結果を返します。
-	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error)
+	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*ImageResponse, error)
 	// PrepareImagePart は、指定された画像URLから後続処理で利用する画像パーツを作成します。
 	PrepareImagePart(ctx context.Context, rawURL string) *genai.Part
 	Backend

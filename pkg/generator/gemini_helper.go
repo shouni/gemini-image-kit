@@ -69,16 +69,19 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.I
 
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
-	personGeneration := gemini.PersonGenerationUnspecified
+	threshold := genai.HarmBlockThresholdOff
+	personGeneration := gemini.PersonGenerationAllowAdult
+
 	if g.core.IsVertexAI() {
+		threshold = genai.HarmBlockThresholdBlockNone
 		personGeneration = gemini.PersonGenerationAllowAll
 	}
 
 	defaultSafetySettings := []*genai.SafetySetting{
-		{Category: genai.HarmCategoryHarassment, Threshold: genai.HarmBlockThresholdBlockNone},
-		{Category: genai.HarmCategoryHateSpeech, Threshold: genai.HarmBlockThresholdBlockNone},
-		{Category: genai.HarmCategorySexuallyExplicit, Threshold: genai.HarmBlockThresholdBlockNone},
-		{Category: genai.HarmCategoryDangerousContent, Threshold: genai.HarmBlockThresholdBlockNone},
+		{Category: genai.HarmCategoryHarassment, Threshold: threshold},
+		{Category: genai.HarmCategoryHateSpeech, Threshold: threshold},
+		{Category: genai.HarmCategorySexuallyExplicit, Threshold: threshold},
+		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
 	}
 
 	return gemini.GenerateOptions{

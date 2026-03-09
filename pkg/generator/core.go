@@ -23,13 +23,13 @@ type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
 	reader     remoteio.InputReader
 	httpClient httpkit.StreamDownloader
-	cache      ImageCacher
+	cache      domain.ImageCacher
 	expiration time.Duration
 	compress   bool
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
+func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache domain.ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
 	}
