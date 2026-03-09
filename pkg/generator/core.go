@@ -18,6 +18,12 @@ import (
 	"google.golang.org/genai"
 )
 
+const (
+	ImageCompressionQuality = 75
+	cacheKeyFileAPIURI      = "fileapi_uri:"
+	cacheKeyFileAPIName     = "fileapi_name:"
+)
+
 // GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
@@ -150,20 +156,11 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 		return nil, err
 	}
 
-	out, err := c.ParseToResponse(resp, domain.DereferenceSeed(opts.Seed))
-	if err != nil {
-		return nil, err
-	}
-
-	return &domain.ImageResponse{
-		Data:     out.Data,
-		MimeType: out.MimeType,
-		UsedSeed: out.UsedSeed,
-	}, nil
+	return c.ParseToResponse(resp, domain.DereferenceSeed(opts.Seed))
 }
 
 // ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
-func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ImageOutput, error) {
+func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*domain.ImageResponse, error) {
 	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
 		return nil, fmt.Errorf("invalid or empty response from Gemini")
 	}
@@ -180,7 +177,7 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*I
 
 	for _, part := range candidate.Content.Parts {
 		if part.InlineData != nil {
-			return &ImageOutput{
+			return &domain.ImageResponse{
 				Data:     part.InlineData.Data,
 				MimeType: part.InlineData.MIMEType,
 				UsedSeed: seed,
