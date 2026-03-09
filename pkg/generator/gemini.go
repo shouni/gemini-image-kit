@@ -13,11 +13,11 @@ const negativePromptSeparator = "\n\n[Negative Prompt]\n"
 type GeminiGenerator struct {
 	model        string
 	qualityModel string
-	core         ImageExecutor
+	core         domain.ImageExecutor
 }
 
 // NewGeminiGenerator は新しい GeminiGenerator を作成します。
-func NewGeminiGenerator(model, qualityModel string, core ImageExecutor) (*GeminiGenerator, error) {
+func NewGeminiGenerator(model, qualityModel string, core domain.ImageExecutor) (*GeminiGenerator, error) {
 	if model == "" {
 		return nil, fmt.Errorf("model is required")
 	}
