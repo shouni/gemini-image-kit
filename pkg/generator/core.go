@@ -56,9 +56,9 @@ func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputRe
 	}, nil
 }
 
-// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
-func (c *GeminiImageCore) IsVertexAI() bool {
-	return c.aiClient.IsVertexAI()
+// GetGenerativeModel は、基盤となる GenerativeModel インスタンスを返します。
+func (c *GeminiImageCore) GetGenerativeModel() gemini.GenerativeModel {
+	return c.aiClient
 }
 
 // UploadFile は指定された fileURI の画像を Gemini File API にアップロードし、アップロード先の URI を返します。
