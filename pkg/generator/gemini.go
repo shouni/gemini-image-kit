@@ -35,6 +35,11 @@ func NewGeminiGenerator(model, qualityModel string, core domain.ImageExecutor) (
 	}, nil
 }
 
+// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
+func (g *GeminiGenerator) IsVertexAI() bool {
+	return g.core.IsVertexAI()
+}
+
 // GenerateMangaPanel は単一のパネル画像を生成します。
 func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
 	return g.generate(
