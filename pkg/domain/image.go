@@ -18,14 +18,14 @@ type GenerationOptions struct {
 
 // ImagePanelRequest は単一の画像生成要求です。
 type ImagePanelRequest struct {
-	Options GenerationOptions
-	Image   ImageURI
+	GenerationOptions
+	Image ImageURI
 }
 
 // ImagePageRequest は漫画1ページの一括生成要求です。
 type ImagePageRequest struct {
-	Options GenerationOptions
-	Images  []ImageURI
+	GenerationOptions
+	Images []ImageURI
 }
 
 // ImageResponse は生成された画像データとそのメタデータです。

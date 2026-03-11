@@ -5,7 +5,7 @@ import (
 )
 
 func TestImageGenerationRequest_Fields(t *testing.T) {
-	t.Run("should correctly store ImageURI and Options", func(t *testing.T) {
+	t.Run("should correctly store ImageURI and GenerationOptions", func(t *testing.T) {
 		fileAPI := "https://generativelanguage.googleapis.com/v1beta/files/test-id"
 		refURL := "gs://my-bucket/character.png"
 		size := "2K"
@@ -15,7 +15,7 @@ func TestImageGenerationRequest_Fields(t *testing.T) {
 				FileAPIURI:   fileAPI,
 				ReferenceURL: refURL,
 			},
-			Options: GenerationOptions{
+			GenerationOptions: GenerationOptions{
 				ImageSize: size,
 			},
 		}
@@ -28,9 +28,8 @@ func TestImageGenerationRequest_Fields(t *testing.T) {
 			t.Errorf("ReferenceURL is incorrect. want: %s, got: %s", refURL, req.Image.ReferenceURL)
 		}
 
-		// Options 経由の確認
-		if req.Options.ImageSize != size {
-			t.Errorf("ImageSize is incorrect. want: %s, got: %s", size, req.Options.ImageSize)
+		if req.GenerationOptions.ImageSize != size {
+			t.Errorf("ImageSize is incorrect. want: %s, got: %s", size, req.GenerationOptions.ImageSize)
 		}
 	})
 }

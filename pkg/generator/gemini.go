@@ -45,7 +45,7 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.Ima
 	return g.generate(
 		ctx,
 		g.model,
-		req.Options,
+		req.GenerationOptions,
 		[]domain.ImageURI{req.Image},
 	)
 }
@@ -55,7 +55,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 	return g.generate(
 		ctx,
 		g.qualityModel,
-		req.Options,
+		req.GenerationOptions,
 		req.Images,
 	)
 }
