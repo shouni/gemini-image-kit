@@ -6,26 +6,26 @@ type ImageURI struct {
 	FileAPIURI   string // Gemini File API 上の URI (https://...)
 }
 
-// ImageGenerationRequest は単一の画像生成要求です。
-type ImageGenerationRequest struct {
+// GenerationOptions は画像生成時の共通設定パラメータを保持します。
+type GenerationOptions struct {
 	Prompt         string
 	SystemPrompt   string
 	NegativePrompt string
 	AspectRatio    string
 	ImageSize      string
-	Image          ImageURI
 	Seed           *int64
+}
+
+// ImagePanelRequest は単一の画像生成要求です。
+type ImagePanelRequest struct {
+	GenerationOptions
+	Image ImageURI
 }
 
 // ImagePageRequest は漫画1ページの一括生成要求です。
 type ImagePageRequest struct {
-	Prompt         string
-	SystemPrompt   string
-	NegativePrompt string
-	AspectRatio    string
-	ImageSize      string
-	Images         []ImageURI
-	Seed           *int64
+	GenerationOptions
+	Images []ImageURI
 }
 
 // ImageResponse は生成された画像データとそのメタデータです。

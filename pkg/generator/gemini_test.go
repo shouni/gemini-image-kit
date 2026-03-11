@@ -9,25 +9,23 @@ import (
 // GenerateMangaPanel の構造チェック
 func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 	t.Run("FileAPIURIとImageSizeが正しく扱われること", func(t *testing.T) {
-		// 構造体のネストに合わせて修正
-		req := domain.ImageGenerationRequest{
-			Prompt:    "test prompt",
-			ImageSize: "2K",
+		req := domain.ImagePanelRequest{
+			GenerationOptions: domain.GenerationOptions{
+				Prompt:    "test prompt",
+				ImageSize: "2K",
+			},
 			Image: domain.ImageURI{
 				FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/test",
 				ReferenceURL: "gs://bucket/ref.png",
 			},
 		}
 
-		// 検証のポイント:
-		// 1. collectImageParts において req.Image.FileAPIURI が parts に含まれているか
-		// 2. toOptions において req.ImageSize が options.ImageSize に渡っているか
-
 		if req.Image.FileAPIURI == "" {
 			t.Error("FileAPIURI should be set in req.Image")
 		}
+
 		if req.ImageSize != "2K" {
-			t.Errorf("ImageSize should be 2K, got %s", req.ImageSize)
+			t.Errorf("ImageSize should be 2K, got %s", req.GenerationOptions.ImageSize)
 		}
 	})
 }
@@ -35,6 +33,9 @@ func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 func TestGeminiGenerator_GenerateMangaPage_Structure(t *testing.T) {
 	t.Run("複数枚のImageURIが保持されること", func(t *testing.T) {
 		req := domain.ImagePageRequest{
+			GenerationOptions: domain.GenerationOptions{
+				AspectRatio: "16:9",
+			},
 			Images: []domain.ImageURI{
 				{FileAPIURI: "api-1", ReferenceURL: "ref-1"},
 				{FileAPIURI: "api-2", ReferenceURL: "ref-2"},
