@@ -28,7 +28,7 @@ func TestImageGenerationRequest_Fields(t *testing.T) {
 			t.Errorf("ReferenceURL is incorrect. want: %s, got: %s", refURL, req.Image.ReferenceURL)
 		}
 
-		if req.GenerationOptions.ImageSize != size {
+		if req.ImageSize != size {
 			t.Errorf("ImageSize is incorrect. want: %s, got: %s", size, req.GenerationOptions.ImageSize)
 		}
 	})

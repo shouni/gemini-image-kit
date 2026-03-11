@@ -24,7 +24,7 @@ func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 			t.Error("FileAPIURI should be set in req.Image")
 		}
 
-		if req.GenerationOptions.ImageSize != "2K" {
+		if req.ImageSize != "2K" {
 			t.Errorf("ImageSize should be 2K, got %s", req.GenerationOptions.ImageSize)
 		}
 	})
