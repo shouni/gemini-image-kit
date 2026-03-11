@@ -41,17 +41,12 @@ func (g *GeminiGenerator) IsVertexAI() bool {
 }
 
 // GenerateMangaPanel は単一のパネル画像を生成します。
-func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImageGenerationRequest) (*domain.ImageResponse, error) {
+func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImagePanelRequest) (*domain.ImageResponse, error) {
 	return g.generate(
 		ctx,
 		g.model,
-		req.Prompt,
-		req.NegativePrompt,
+		req.Options,
 		[]domain.ImageURI{req.Image},
-		req.AspectRatio,
-		req.ImageSize,
-		req.SystemPrompt,
-		req.Seed,
 	)
 }
 
@@ -60,12 +55,7 @@ func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.Imag
 	return g.generate(
 		ctx,
 		g.qualityModel,
-		req.Prompt,
-		req.NegativePrompt,
+		req.Options,
 		req.Images,
-		req.AspectRatio,
-		req.ImageSize,
-		req.SystemPrompt,
-		req.Seed,
 	)
 }

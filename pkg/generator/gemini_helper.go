@@ -13,8 +13,8 @@ import (
 )
 
 // generate は画像生成のコアロジックです。
-func (g *GeminiGenerator) generate(ctx context.Context, model, prompt, negative string, uris []domain.ImageURI, ar, size, sp string, seed *int64) (*domain.ImageResponse, error) {
-	finalPrompt := buildFinalPrompt(prompt, negative)
+func (g *GeminiGenerator) generate(ctx context.Context, model string, req domain.Options, uris []domain.ImageURI) (*domain.ImageResponse, error) {
+	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")
 	}
@@ -26,7 +26,7 @@ func (g *GeminiGenerator) generate(ctx context.Context, model, prompt, negative 
 	parts = append(parts, &genai.Part{Text: finalPrompt})
 
 	// 3. ImageSize を含めたオプション構築
-	opts := g.toOptions(ar, size, sp, seed)
+	opts := g.toOptions(req.AspectRatio, req.ImageSize, req.SystemPrompt, req.Seed)
 	return g.core.ExecuteRequest(ctx, model, parts, opts)
 }
 
