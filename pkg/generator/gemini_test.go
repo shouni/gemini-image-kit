@@ -10,7 +10,7 @@ import (
 func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 	t.Run("FileAPIURIとImageSizeが正しく扱われること", func(t *testing.T) {
 		req := domain.ImagePanelRequest{
-			Options: domain.Options{
+			Options: domain.GenerationOptions{
 				Prompt:    "test prompt",
 				ImageSize: "2K",
 			},
@@ -33,7 +33,7 @@ func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 func TestGeminiGenerator_GenerateMangaPage_Structure(t *testing.T) {
 	t.Run("複数枚のImageURIが保持されること", func(t *testing.T) {
 		req := domain.ImagePageRequest{
-			Options: domain.Options{
+			Options: domain.GenerationOptions{
 				AspectRatio: "16:9",
 			},
 			Images: []domain.ImageURI{

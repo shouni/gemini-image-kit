@@ -6,8 +6,8 @@ type ImageURI struct {
 	FileAPIURI   string // Gemini File API 上の URI (https://...)
 }
 
-// Options は単一の画像生成要求です。
-type Options struct {
+// GenerationOptions は画像生成時の共通設定パラメータを保持します。
+type GenerationOptions struct {
 	Prompt         string
 	SystemPrompt   string
 	NegativePrompt string
@@ -18,13 +18,13 @@ type Options struct {
 
 // ImagePanelRequest は単一の画像生成要求です。
 type ImagePanelRequest struct {
-	Options Options
+	Options GenerationOptions
 	Image   ImageURI
 }
 
 // ImagePageRequest は漫画1ページの一括生成要求です。
 type ImagePageRequest struct {
-	Options Options
+	Options GenerationOptions
 	Images  []ImageURI
 }
 

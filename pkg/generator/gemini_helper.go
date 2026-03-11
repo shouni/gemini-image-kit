@@ -13,7 +13,7 @@ import (
 )
 
 // generate は画像生成のコアロジックです。
-func (g *GeminiGenerator) generate(ctx context.Context, model string, req domain.Options, uris []domain.ImageURI) (*domain.ImageResponse, error) {
+func (g *GeminiGenerator) generate(ctx context.Context, model string, req domain.GenerationOptions, uris []domain.ImageURI) (*domain.ImageResponse, error) {
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")

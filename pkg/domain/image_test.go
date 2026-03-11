@@ -15,7 +15,7 @@ func TestImageGenerationRequest_Fields(t *testing.T) {
 				FileAPIURI:   fileAPI,
 				ReferenceURL: refURL,
 			},
-			Options: Options{
+			Options: GenerationOptions{
 				ImageSize: size,
 			},
 		}
