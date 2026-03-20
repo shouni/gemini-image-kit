@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
+	"github.com/shouni/gemini-image-kit/pkg/ports"
 )
 
 const negativePromptSeparator = "\n\n[Negative Prompt]\n"
@@ -13,11 +13,11 @@ const negativePromptSeparator = "\n\n[Negative Prompt]\n"
 type GeminiGenerator struct {
 	model        string
 	qualityModel string
-	core         domain.ImageExecutor
+	core         ports.ImageExecutor
 }
 
 // NewGeminiGenerator は新しい GeminiGenerator を作成します。
-func NewGeminiGenerator(model, qualityModel string, core domain.ImageExecutor) (*GeminiGenerator, error) {
+func NewGeminiGenerator(model, qualityModel string, core ports.ImageExecutor) (*GeminiGenerator, error) {
 	if model == "" {
 		return nil, fmt.Errorf("model is required")
 	}
@@ -41,17 +41,17 @@ func (g *GeminiGenerator) IsVertexAI() bool {
 }
 
 // GenerateMangaPanel は単一のパネル画像を生成します。
-func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req domain.ImagePanelRequest) (*domain.ImageResponse, error) {
+func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req ports.ImagePanelRequest) (*ports.ImageResponse, error) {
 	return g.generate(
 		ctx,
 		g.model,
 		req.GenerationOptions,
-		[]domain.ImageURI{req.Image},
+		[]ports.ImageURI{req.Image},
 	)
 }
 
 // GenerateMangaPage は複数アセットを参照してページ画像を生成します。
-func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req domain.ImagePageRequest) (*domain.ImageResponse, error) {
+func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req ports.ImagePageRequest) (*ports.ImageResponse, error) {
 	return g.generate(
 		ctx,
 		g.qualityModel,

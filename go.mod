@@ -7,7 +7,7 @@ require (
 	github.com/shouni/go-http-kit v1.3.3
 	github.com/shouni/go-remote-io v1.2.2
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/genai v1.50.0
+	google.golang.org/genai v1.51.0
 )
 
 require (

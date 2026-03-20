@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
-	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
+
+	"github.com/shouni/gemini-image-kit/pkg/imgutil"
+	"github.com/shouni/gemini-image-kit/pkg/ports"
 )
 
 // generate は画像生成のコアロジックです。
-func (g *GeminiGenerator) generate(ctx context.Context, model string, req domain.GenerationOptions, uris []domain.ImageURI) (*domain.ImageResponse, error) {
+func (g *GeminiGenerator) generate(ctx context.Context, model string, req ports.GenerationOptions, uris []ports.ImageURI) (*ports.ImageResponse, error) {
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")
@@ -31,7 +32,7 @@ func (g *GeminiGenerator) generate(ctx context.Context, model string, req domain
 }
 
 // collectImageParts は ImageURI 構造体からパーツを生成します。
-func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []domain.ImageURI) []*genai.Part {
+func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.ImageURI) []*genai.Part {
 	parts := make([]*genai.Part, 0, len(uris))
 
 	for _, uri := range uris {

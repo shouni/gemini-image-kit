@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
+	"github.com/shouni/gemini-image-kit/pkg/ports"
 	"google.golang.org/genai"
 )
 
@@ -72,13 +72,13 @@ func TestCollectImageParts(t *testing.T) {
 	tests := []struct {
 		name     string
 		isVertex bool
-		uris     []domain.ImageURI
+		uris     []ports.ImageURI
 		verify   func(t *testing.T, parts []*genai.Part)
 	}{
 		{
 			name:     "Vertex AI モードで GCS URI を処理",
 			isVertex: true,
-			uris: []domain.ImageURI{
+			uris: []ports.ImageURI{
 				{ReferenceURL: "gs://my-bucket/char.png"},
 			},
 			verify: func(t *testing.T, parts []*genai.Part) {
@@ -94,7 +94,7 @@ func TestCollectImageParts(t *testing.T) {
 		{
 			name:     "Gemini API モードで FileAPIURI を優先",
 			isVertex: false,
-			uris: []domain.ImageURI{
+			uris: []ports.ImageURI{
 				{
 					ReferenceURL: "https://example.com/ignore.jpg",
 					FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/abc-123",
