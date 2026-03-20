@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shouni/gemini-image-kit/pkg/ports"
+	"github.com/shouni/gemini-image-kit/ports"
 )
 
 const negativePromptSeparator = "\n\n[Negative Prompt]\n"

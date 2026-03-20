@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shouni/go-gemini-client/pkg/gemini"
-	"github.com/shouni/go-remote-io/pkg/remoteio"
+	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/shouni/go-remote-io/remoteio"
 	"google.golang.org/genai"
 
-	"github.com/shouni/gemini-image-kit/pkg/imgutil"
-	"github.com/shouni/gemini-image-kit/pkg/ports"
+	"github.com/shouni/gemini-image-kit/imgutil"
+	"github.com/shouni/gemini-image-kit/ports"
 )
 
 // generate は画像生成のコアロジックです。

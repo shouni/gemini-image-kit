@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/shouni/gemini-image-kit/pkg/ports"
+	"github.com/shouni/gemini-image-kit/ports"
 	"google.golang.org/genai"
 )
 

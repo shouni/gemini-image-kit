@@ -35,16 +35,16 @@
 ## 📂 プロジェクト構造 (Layout)
 
 ```text
-pkg/
-├── ports/               # 外部インターフェースおよび入出力モデル定義
-│   ├── image.go         # リクエスト/レスポンス、ImageURI等の型定義
-│   ├── image_helpers.go # ドメインモデルに関連するヘルパー関数
-│   └── interfaces.go    # ImageExecutor / ImageCacher 等の抽象化定義
+gemini-image-kit/
 ├── generator/           # 画像生成のコアロジック
-│   ├── gemini.go        # 高レベルジェネレーター（公開 API / Adapter 実装）
-│   ├── gemini_helper.go # パーツ収集、プロンプト構築ロジック
 │   ├── core.go          # GeminiImageCore（File API のライフサイクル管理）
-│   └── core_helper.go   # 画像フェッチ・パース処理
+│   ├── core_helper.go   # 画像フェッチ・パース処理
+│   ├── gemini.go        # GeminiImageAdapter（高レベルジェネレーター）
+│   └── gemini_helper.go # パーツ収集、プロンプト構築ロジック
+├── ports/               # 外部インターフェースおよび入出力モデル定義
+│   ├── interfaces.go    # ImageExecutor / ImageCacher 等の抽象化定義
+│   ├── image.go         # リクエスト/レスポンス、ImageURI 等の型定義
+│   └── image_helpers.go # ドメインモデルに関連するヘルパー関数
 └── imgutil/             # 画像処理ユーティリティ
     ├── mime.go          # MIMEタイプ判定ロジック
     └── compressor.go    # 送信前画像圧縮（JPEG最適化等）
