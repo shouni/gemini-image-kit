@@ -36,7 +36,7 @@
 
 ```text
 pkg/
-├── ports/               # 共通ドメインモデル
+├── ports/               # 外部インターフェースおよび入出力モデル定義
 │   ├── image.go         # リクエスト/レスポンス、ImageURI等の型定義
 │   ├── image_helpers.go # ドメインモデルに関連するヘルパー関数
 │   └── interfaces.go    # ImageExecutor / ImageCacher 等の抽象化定義
