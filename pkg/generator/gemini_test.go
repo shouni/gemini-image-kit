@@ -3,18 +3,18 @@ package generator
 import (
 	"testing"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
+	"github.com/shouni/gemini-image-kit/pkg/ports"
 )
 
 // GenerateMangaPanel の構造チェック
 func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 	t.Run("FileAPIURIとImageSizeが正しく扱われること", func(t *testing.T) {
-		req := domain.ImagePanelRequest{
-			GenerationOptions: domain.GenerationOptions{
+		req := ports.ImagePanelRequest{
+			GenerationOptions: ports.GenerationOptions{
 				Prompt:    "test prompt",
 				ImageSize: "2K",
 			},
-			Image: domain.ImageURI{
+			Image: ports.ImageURI{
 				FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/test",
 				ReferenceURL: "gs://bucket/ref.png",
 			},
@@ -32,11 +32,11 @@ func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 
 func TestGeminiGenerator_GenerateMangaPage_Structure(t *testing.T) {
 	t.Run("複数枚のImageURIが保持されること", func(t *testing.T) {
-		req := domain.ImagePageRequest{
-			GenerationOptions: domain.GenerationOptions{
+		req := ports.ImagePageRequest{
+			GenerationOptions: ports.GenerationOptions{
 				AspectRatio: "16:9",
 			},
-			Images: []domain.ImageURI{
+			Images: []ports.ImageURI{
 				{FileAPIURI: "api-1", ReferenceURL: "ref-1"},
 				{FileAPIURI: "api-2", ReferenceURL: "ref-2"},
 			},

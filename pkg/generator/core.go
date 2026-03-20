@@ -10,12 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shouni/gemini-image-kit/pkg/domain"
-	"github.com/shouni/gemini-image-kit/pkg/imgutil"
 	"github.com/shouni/go-gemini-client/pkg/gemini"
 	"github.com/shouni/go-http-kit/pkg/httpkit"
 	"github.com/shouni/go-remote-io/pkg/remoteio"
 	"google.golang.org/genai"
+
+	"github.com/shouni/gemini-image-kit/pkg/imgutil"
+	"github.com/shouni/gemini-image-kit/pkg/ports"
 )
 
 const (
@@ -29,13 +30,13 @@ type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
 	reader     remoteio.InputReader
 	httpClient httpkit.StreamDownloader
-	cache      domain.ImageCacher
+	cache      ports.ImageCacher
 	expiration time.Duration
 	compress   bool
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache domain.ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
+func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ports.ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
 	}
@@ -150,17 +151,17 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *
 }
 
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
-func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*domain.ImageResponse, error) {
+func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
 	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ParseToResponse(resp, domain.DereferenceSeed(opts.Seed))
+	return c.ParseToResponse(resp, ports.DereferenceSeed(opts.Seed))
 }
 
 // ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
-func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*domain.ImageResponse, error) {
+func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
 	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
 		return nil, fmt.Errorf("invalid or empty response from Gemini")
 	}
@@ -177,7 +178,7 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*d
 
 	for _, part := range candidate.Content.Parts {
 		if part.InlineData != nil {
-			return &domain.ImageResponse{
+			return &ports.ImageResponse{
 				Data:     part.InlineData.Data,
 				MimeType: part.InlineData.MIMEType,
 				UsedSeed: seed,

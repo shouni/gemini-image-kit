@@ -1,4 +1,4 @@
-package domain
+package ports
 
 // DereferenceSeed は、int64のポインタを安全にデリファレンスします。
 // ポインタがnilの場合は0を返します。

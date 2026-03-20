@@ -1,4 +1,4 @@
-package domain
+package ports
 
 // ImageURI は画像の参照先情報を保持します。
 type ImageURI struct {
