@@ -3,7 +3,7 @@ package generator
 import (
 	"testing"
 
-	"github.com/shouni/gemini-image-kit/pkg/ports"
+	"github.com/shouni/gemini-image-kit/ports"
 )
 
 // GenerateMangaPanel の構造チェック

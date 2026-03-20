@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/shouni/go-gemini-client/pkg/gemini"
+	"github.com/shouni/go-gemini-client/gemini"
 	"google.golang.org/genai"
 )
 

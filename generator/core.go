@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shouni/go-gemini-client/pkg/gemini"
-	"github.com/shouni/go-http-kit/pkg/httpkit"
-	"github.com/shouni/go-remote-io/pkg/remoteio"
+	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/shouni/go-http-kit/httpkit"
+	"github.com/shouni/go-remote-io/remoteio"
 	"google.golang.org/genai"
 
-	"github.com/shouni/gemini-image-kit/pkg/imgutil"
-	"github.com/shouni/gemini-image-kit/pkg/ports"
+	"github.com/shouni/gemini-image-kit/imgutil"
+	"github.com/shouni/gemini-image-kit/ports"
 )
 
 const (
@@ -29,14 +29,14 @@ const (
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
 	reader     remoteio.InputReader
-	httpClient httpkit.StreamDownloader
+	httpClient httpkit.Downloader
 	cache      ports.ImageCacher
 	expiration time.Duration
 	compress   bool
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.StreamDownloader, cache ports.ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
+func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.Downloader, cache ports.ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
 	}
