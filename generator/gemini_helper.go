@@ -15,6 +15,9 @@ import (
 
 // generate は画像生成のコアロジックです。
 func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOptions, uris []ports.ImageURI) (*ports.ImageResponse, error) {
+	if req.Model == "" {
+		return nil, fmt.Errorf("model is required")
+	}
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")
