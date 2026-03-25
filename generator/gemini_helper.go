@@ -14,7 +14,7 @@ import (
 )
 
 // generate は画像生成のコアロジックです。
-func (g *GeminiGenerator) generate(ctx context.Context, model string, req ports.GenerationOptions, uris []ports.ImageURI) (*ports.ImageResponse, error) {
+func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOptions, uris []ports.ImageURI) (*ports.ImageResponse, error) {
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
 		return nil, fmt.Errorf("prompt cannot be empty")
@@ -28,7 +28,7 @@ func (g *GeminiGenerator) generate(ctx context.Context, model string, req ports.
 
 	// 3. ImageSize を含めたオプション構築
 	opts := g.toOptions(req.AspectRatio, req.ImageSize, req.SystemPrompt, req.Seed)
-	return g.core.ExecuteRequest(ctx, model, parts, opts)
+	return g.core.ExecuteRequest(ctx, req.Model, parts, opts)
 }
 
 // collectImageParts は ImageURI 構造体からパーツを生成します。

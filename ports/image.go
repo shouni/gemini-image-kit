@@ -8,6 +8,7 @@ type ImageURI struct {
 
 // GenerationOptions は画像生成時の共通設定パラメータを保持します。
 type GenerationOptions struct {
+	Model          string
 	Prompt         string
 	SystemPrompt   string
 	NegativePrompt string
