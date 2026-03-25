@@ -11,27 +11,17 @@ const negativePromptSeparator = "\n\n[Negative Prompt]\n"
 
 // GeminiGenerator は高レベルな画像生成ロジックを担当します。
 type GeminiGenerator struct {
-	model        string
-	qualityModel string
-	core         ports.ImageExecutor
+	core ports.ImageExecutor
 }
 
 // NewGeminiGenerator は新しい GeminiGenerator を作成します。
-func NewGeminiGenerator(model, qualityModel string, core ports.ImageExecutor) (*GeminiGenerator, error) {
-	if model == "" {
-		return nil, fmt.Errorf("model is required")
-	}
-	if qualityModel == "" {
-		return nil, fmt.Errorf("qualityModel is required")
-	}
+func NewGeminiGenerator(core ports.ImageExecutor) (*GeminiGenerator, error) {
 	if core == nil {
 		return nil, fmt.Errorf("core (ImageExecutor) is required")
 	}
 
 	return &GeminiGenerator{
-		model:        model,
-		qualityModel: qualityModel,
-		core:         core,
+		core: core,
 	}, nil
 }
 
@@ -44,7 +34,6 @@ func (g *GeminiGenerator) IsVertexAI() bool {
 func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req ports.ImagePanelRequest) (*ports.ImageResponse, error) {
 	return g.generate(
 		ctx,
-		g.model,
 		req.GenerationOptions,
 		[]ports.ImageURI{req.Image},
 	)
@@ -54,7 +43,6 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req ports.Imag
 func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req ports.ImagePageRequest) (*ports.ImageResponse, error) {
 	return g.generate(
 		ctx,
-		g.qualityModel,
 		req.GenerationOptions,
 		req.Images,
 	)
