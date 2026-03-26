@@ -73,8 +73,11 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.Im
 
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
+	// Vertex AI かどうかで安全設定の定数を切り替え
 	threshold := genai.HarmBlockThresholdOff
-	if g.core.IsVertexAI() {
+	isVertex := g.core.IsVertexAI()
+
+	if isVertex {
 		threshold = genai.HarmBlockThresholdBlockNone
 	}
 
@@ -85,14 +88,22 @@ func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.Gen
 		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
 	}
 
-	return gemini.GenerateOptions{
-		AspectRatio:      ar,
-		ImageSize:        size,
-		SystemPrompt:     sp,
-		Seed:             seed,
-		PersonGeneration: gemini.PersonGenerationAllowAll,
-		SafetySettings:   defaultSafetySettings,
+	// 基本となるオプションを構築
+	opts := gemini.GenerateOptions{
+		AspectRatio:    ar,
+		ImageSize:      size,
+		SystemPrompt:   sp,
+		Seed:           seed,
+		SafetySettings: defaultSafetySettings,
 	}
+
+	// Vertex AI の場合のみ PersonGeneration を設定する
+	// Gemini API (Google AI) ではこのフィールドが含まれると致命的エラーになるため
+	if isVertex {
+		opts.PersonGeneration = gemini.PersonGenerationAllowAll
+	}
+
+	return opts
 }
 
 // buildFinalPrompt はプロンプトと否定プロンプトを結合します。
