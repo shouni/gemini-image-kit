@@ -32,7 +32,7 @@
 
 ---
 
-## 📂 プロジェクト構造 (Layout)
+## 📂 プロジェクト構造 (Project Structure)
 
 ```text
 gemini-image-kit/

@@ -28,7 +28,7 @@ const (
 // GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
-	reader     remoteio.InputReader
+	reader     remoteio.Reader
 	httpClient httpkit.Downloader
 	cache      ports.ImageCacher
 	expiration time.Duration
@@ -36,7 +36,14 @@ type GeminiImageCore struct {
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(aiClient gemini.GenerativeModel, reader remoteio.InputReader, httpClient httpkit.Downloader, cache ports.ImageCacher, cacheTTL time.Duration, compress bool) (*GeminiImageCore, error) {
+func NewGeminiImageCore(
+	aiClient gemini.GenerativeModel,
+	reader remoteio.Reader,
+	httpClient httpkit.Downloader,
+	cache ports.ImageCacher,
+	cacheTTL time.Duration,
+	compress bool,
+) (*GeminiImageCore, error) {
 	if aiClient == nil {
 		return nil, fmt.Errorf("aiClient is required")
 	}
