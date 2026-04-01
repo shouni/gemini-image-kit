@@ -3,11 +3,11 @@ module github.com/shouni/gemini-image-kit
 go 1.26
 
 require (
-	github.com/shouni/go-gemini-client v1.2.2
+	github.com/shouni/go-gemini-client v1.2.3
 	github.com/shouni/go-http-kit v1.4.0
-	github.com/shouni/go-remote-io v1.3.1
+	github.com/shouni/go-remote-io v1.3.2
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/genai v1.52.0
+	google.golang.org/genai v1.52.1
 )
 
 require (
@@ -19,7 +19,7 @@ require (
 	cloud.google.com/go/iam v1.5.3 // indirect
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/storage v1.61.3 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.31.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.55.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.55.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
@@ -73,7 +73,7 @@ require (
 	google.golang.org/genproto v0.0.0-20260316180232-0b37fe3546d5 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260316180232-0b37fe3546d5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7 // indirect
-	google.golang.org/grpc v1.79.3 // indirect
+	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
