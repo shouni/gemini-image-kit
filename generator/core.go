@@ -6,8 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -81,30 +79,12 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 	defer rc.Close()
 	br := bufio.NewReader(rc)
-
-	// 1. ファイルの中身を少しだけ先読み（バリデーション用）
-	head, err := br.Peek(512)
-	if err != nil && err != io.EOF {
-		return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
-	}
-	if len(head) == 0 {
-		return "", fmt.Errorf("画像データが空です")
-	}
-
-	// 2. コンテンツベースで「画像であること」を厳格にチェック
-	detectedMime := http.DetectContentType(head)
-	if !strings.HasPrefix(detectedMime, "image/") {
-		return "", fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+	if err := validateUploadSource(br); err != nil {
+		return "", err
 	}
 
 	mimeType := imgutil.GuessMIMEType(fileURI)
-	var uri, fileName string
-	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
-		uri, fileName, err = c.uploadCompressed(ctx, br, mimeType, fileURI)
-	} else {
-		uri, fileName, err = c.uploadStream(ctx, br, mimeType, fileURI)
-	}
-
+	uri, fileName, err := c.uploadByStrategy(ctx, br, mimeType, fileURI)
 	if err != nil {
 		return "", err
 	}
@@ -115,24 +95,16 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 
 // DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
 func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIName + fileURI); ok {
-			if name, ok := val.(string); ok {
-				return c.aiClient.DeleteFile(ctx, name)
-			}
-		}
+	if name, ok := c.cacheGetString(cacheKeyFileAPIName + fileURI); ok {
+		return c.aiClient.DeleteFile(ctx, name)
 	}
 	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }
 
 // PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
-			if uri, ok := val.(string); ok {
-				return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
-			}
-		}
+	if uri, ok := c.cacheGetString(cacheKeyFileAPIURI + rawURL); ok {
+		return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
 	}
 
 	rc, err := c.fetchImageData(ctx, rawURL)

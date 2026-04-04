@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"image"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/shouni/go-remote-io/remoteio"
 	"google.golang.org/genai"
+
+	"github.com/shouni/gemini-image-kit/imgutil"
 )
 
 // fetchImageData は、指定されたURLまたはCloud Storageから画像データ読み込み用の Reader を返します。
@@ -57,20 +60,56 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 	return c.aiClient.UploadFile(ctx, pr, mimeType, filepath.Base(fileURI))
 }
 
-func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIURI + fileURI); ok {
-			if uri, ok := val.(string); ok {
-				return uri, true
-			}
-		}
+// uploadByStrategy は、画像の圧縮設定に基づいてアップロードを実行します。
+func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (string, string, error) {
+	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
+		return c.uploadCompressed(ctx, br, mimeType, fileURI)
 	}
-	return "", false
+	return c.uploadStream(ctx, br, mimeType, fileURI)
 }
 
+// cacheGetString は、キャッシュから文字列を取得します。存在しない場合は空文字列と false を返します。
+func (c *GeminiImageCore) cacheGetString(key string) (string, bool) {
+	if c.cache == nil {
+		return "", false
+	}
+	val, ok := c.cache.Get(key)
+	if !ok {
+		return "", false
+	}
+	strVal, ok := val.(string)
+	if !ok {
+		return "", false
+	}
+	return strVal, true
+}
+
+// getFromCache は、キャッシュからファイルのAPI URIを取得します。存在しない場合は空文字列と false を返します。
+func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {
+	return c.cacheGetString(cacheKeyFileAPIURI + fileURI)
+}
+
+// saveToCache は、キャッシュにファイルのAPI URIとファイル名を保存します。
 func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
 	if c.cache != nil {
 		c.cache.Set(cacheKeyFileAPIURI+fileURI, uri, c.expiration)
 		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)
 	}
+}
+
+// validateUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証します。
+func validateUploadSource(br *bufio.Reader) error {
+	head, err := br.Peek(512)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+	}
+	if len(head) == 0 {
+		return fmt.Errorf("画像データが空です")
+	}
+
+	detectedMime := http.DetectContentType(head)
+	if !strings.HasPrefix(detectedMime, "image/") {
+		return fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+	}
+	return nil
 }

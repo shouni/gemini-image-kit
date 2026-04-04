@@ -39,36 +39,35 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.Im
 	parts := make([]*genai.Part, 0, len(uris))
 
 	for _, uri := range uris {
-		// 1. Vertex AI モードで、GCS URI (gs://) の場合
-		if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
-			parts = append(parts, &genai.Part{
-				FileData: &genai.FileData{
-					FileURI:  uri.ReferenceURL, // SDKの定義通り FileURI に gs:// パスを入れる
-					MIMEType: imgutil.GuessMIMEType(uri.ReferenceURL),
-				},
-			})
-			continue
-		}
-
-		// 2. Gemini File API URI がある場合 (Gemini API モード)
-		if uri.FileAPIURI != "" {
-			parts = append(parts, &genai.Part{
-				FileData: &genai.FileData{
-					FileURI:  uri.FileAPIURI,
-					MIMEType: imgutil.GuessMIMEType(uri.ReferenceURL),
-				},
-			})
-			continue
-		}
-
-		// 3. ローカルパスまたは HTTP URL の場合 (バイナリとして読み込み)
-		if uri.ReferenceURL != "" {
-			if res := g.core.PrepareImagePart(ctx, uri.ReferenceURL); res != nil {
-				parts = append(parts, res)
-			}
+		if part := g.resolveImagePart(ctx, uri); part != nil {
+			parts = append(parts, part)
 		}
 	}
 	return parts
+}
+
+// resolveImagePart は ImageURI からパーツを生成します。
+func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageURI) *genai.Part {
+	if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
+		return buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL)
+	}
+	if uri.FileAPIURI != "" {
+		return buildFileDataPart(uri.FileAPIURI, uri.ReferenceURL)
+	}
+	if uri.ReferenceURL == "" {
+		return nil
+	}
+	return g.core.PrepareImagePart(ctx, uri.ReferenceURL)
+}
+
+// buildFileDataPart はファイルデータパーツを生成します。
+func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
+	return &genai.Part{
+		FileData: &genai.FileData{
+			FileURI:  fileURI,
+			MIMEType: imgutil.GuessMIMEType(mimeHintURI),
+		},
+	}
 }
 
 // toOptions は Gemini へのリクエストオプションを構築します。
