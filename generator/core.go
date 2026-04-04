@@ -79,7 +79,7 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 	defer rc.Close()
 	br := bufio.NewReader(rc)
-	if err := c.validateUploadSource(br); err != nil {
+	if err := validateUploadSource(br); err != nil {
 		return "", err
 	}
 

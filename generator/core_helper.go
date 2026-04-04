@@ -60,23 +60,6 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 	return c.aiClient.UploadFile(ctx, pr, mimeType, filepath.Base(fileURI))
 }
 
-// validateUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証します。
-func (c *GeminiImageCore) validateUploadSource(br *bufio.Reader) error {
-	head, err := br.Peek(512)
-	if err != nil && err != io.EOF {
-		return fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
-	}
-	if len(head) == 0 {
-		return fmt.Errorf("画像データが空です")
-	}
-
-	detectedMime := http.DetectContentType(head)
-	if !strings.HasPrefix(detectedMime, "image/") {
-		return fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
-	}
-	return nil
-}
-
 // uploadByStrategy は、画像の圧縮設定に基づいてアップロードを実行します。
 func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (string, string, error) {
 	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
@@ -112,4 +95,21 @@ func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
 		c.cache.Set(cacheKeyFileAPIURI+fileURI, uri, c.expiration)
 		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)
 	}
+}
+
+// validateUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証します。
+func validateUploadSource(br *bufio.Reader) error {
+	head, err := br.Peek(512)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+	}
+	if len(head) == 0 {
+		return fmt.Errorf("画像データが空です")
+	}
+
+	detectedMime := http.DetectContentType(head)
+	if !strings.HasPrefix(detectedMime, "image/") {
+		return fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+	}
+	return nil
 }
