@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"image"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/shouni/go-remote-io/remoteio"
 	"google.golang.org/genai"
+
+	"github.com/shouni/gemini-image-kit/imgutil"
 )
 
 // fetchImageData は、指定されたURLまたはCloud Storageから画像データ読み込み用の Reader を返します。
@@ -55,6 +58,29 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 
 	defer pr.Close()
 	return c.aiClient.UploadFile(ctx, pr, mimeType, filepath.Base(fileURI))
+}
+
+func (c *GeminiImageCore) validateUploadSource(br *bufio.Reader) error {
+	head, err := br.Peek(512)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+	}
+	if len(head) == 0 {
+		return fmt.Errorf("画像データが空です")
+	}
+
+	detectedMime := http.DetectContentType(head)
+	if !strings.HasPrefix(detectedMime, "image/") {
+		return fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+	}
+	return nil
+}
+
+func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (string, string, error) {
+	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
+		return c.uploadCompressed(ctx, br, mimeType, fileURI)
+	}
+	return c.uploadStream(ctx, br, mimeType, fileURI)
 }
 
 func (c *GeminiImageCore) cacheGetString(key string) (string, bool) {

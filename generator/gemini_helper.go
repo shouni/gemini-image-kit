@@ -39,26 +39,24 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.Im
 	parts := make([]*genai.Part, 0, len(uris))
 
 	for _, uri := range uris {
-		// 1. Vertex AI モードで、GCS URI (gs://) の場合
-		if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
-			parts = append(parts, buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL))
-			continue
-		}
-
-		// 2. Gemini File API URI がある場合 (Gemini API モード)
-		if uri.FileAPIURI != "" {
-			parts = append(parts, buildFileDataPart(uri.FileAPIURI, uri.ReferenceURL))
-			continue
-		}
-
-		// 3. ローカルパスまたは HTTP URL の場合 (バイナリとして読み込み)
-		if uri.ReferenceURL != "" {
-			if res := g.core.PrepareImagePart(ctx, uri.ReferenceURL); res != nil {
-				parts = append(parts, res)
-			}
+		if part := g.resolveImagePart(ctx, uri); part != nil {
+			parts = append(parts, part)
 		}
 	}
 	return parts
+}
+
+func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageURI) *genai.Part {
+	if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
+		return buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL)
+	}
+	if uri.FileAPIURI != "" {
+		return buildFileDataPart(uri.FileAPIURI, uri.ReferenceURL)
+	}
+	if uri.ReferenceURL == "" {
+		return nil
+	}
+	return g.core.PrepareImagePart(ctx, uri.ReferenceURL)
 }
 
 func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
