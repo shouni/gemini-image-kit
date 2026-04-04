@@ -57,15 +57,23 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 	return c.aiClient.UploadFile(ctx, pr, mimeType, filepath.Base(fileURI))
 }
 
-func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIURI + fileURI); ok {
-			if uri, ok := val.(string); ok {
-				return uri, true
-			}
-		}
+func (c *GeminiImageCore) cacheGetString(key string) (string, bool) {
+	if c.cache == nil {
+		return "", false
 	}
-	return "", false
+	val, ok := c.cache.Get(key)
+	if !ok {
+		return "", false
+	}
+	strVal, ok := val.(string)
+	if !ok {
+		return "", false
+	}
+	return strVal, true
+}
+
+func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {
+	return c.cacheGetString(cacheKeyFileAPIURI + fileURI)
 }
 
 func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {

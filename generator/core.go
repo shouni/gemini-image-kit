@@ -115,24 +115,16 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 
 // DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
 func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIName + fileURI); ok {
-			if name, ok := val.(string); ok {
-				return c.aiClient.DeleteFile(ctx, name)
-			}
-		}
+	if name, ok := c.cacheGetString(cacheKeyFileAPIName + fileURI); ok {
+		return c.aiClient.DeleteFile(ctx, name)
 	}
 	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
 }
 
 // PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
-	if c.cache != nil {
-		if val, ok := c.cache.Get(cacheKeyFileAPIURI + rawURL); ok {
-			if uri, ok := val.(string); ok {
-				return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
-			}
-		}
+	if uri, ok := c.cacheGetString(cacheKeyFileAPIURI + rawURL); ok {
+		return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
 	}
 
 	rc, err := c.fetchImageData(ctx, rawURL)

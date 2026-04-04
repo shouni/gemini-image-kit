@@ -41,23 +41,13 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.Im
 	for _, uri := range uris {
 		// 1. Vertex AI モードで、GCS URI (gs://) の場合
 		if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
-			parts = append(parts, &genai.Part{
-				FileData: &genai.FileData{
-					FileURI:  uri.ReferenceURL, // SDKの定義通り FileURI に gs:// パスを入れる
-					MIMEType: imgutil.GuessMIMEType(uri.ReferenceURL),
-				},
-			})
+			parts = append(parts, buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL))
 			continue
 		}
 
 		// 2. Gemini File API URI がある場合 (Gemini API モード)
 		if uri.FileAPIURI != "" {
-			parts = append(parts, &genai.Part{
-				FileData: &genai.FileData{
-					FileURI:  uri.FileAPIURI,
-					MIMEType: imgutil.GuessMIMEType(uri.ReferenceURL),
-				},
-			})
+			parts = append(parts, buildFileDataPart(uri.FileAPIURI, uri.ReferenceURL))
 			continue
 		}
 
@@ -69,6 +59,15 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.Im
 		}
 	}
 	return parts
+}
+
+func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
+	return &genai.Part{
+		FileData: &genai.FileData{
+			FileURI:  fileURI,
+			MIMEType: imgutil.GuessMIMEType(mimeHintURI),
+		},
+	}
 }
 
 // toOptions は Gemini へのリクエストオプションを構築します。
