@@ -46,6 +46,7 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.Im
 	return parts
 }
 
+// resolveImagePart は ImageURI からパーツを生成します。
 func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageURI) *genai.Part {
 	if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
 		return buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL)
@@ -59,6 +60,7 @@ func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageU
 	return g.core.PrepareImagePart(ctx, uri.ReferenceURL)
 }
 
+// buildFileDataPart はファイルデータパーツを生成します。
 func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
 	return &genai.Part{
 		FileData: &genai.FileData{

@@ -60,6 +60,7 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 	return c.aiClient.UploadFile(ctx, pr, mimeType, filepath.Base(fileURI))
 }
 
+// validateUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証します。
 func (c *GeminiImageCore) validateUploadSource(br *bufio.Reader) error {
 	head, err := br.Peek(512)
 	if err != nil && err != io.EOF {
@@ -76,6 +77,7 @@ func (c *GeminiImageCore) validateUploadSource(br *bufio.Reader) error {
 	return nil
 }
 
+// uploadByStrategy は、画像の圧縮設定に基づいてアップロードを実行します。
 func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (string, string, error) {
 	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
 		return c.uploadCompressed(ctx, br, mimeType, fileURI)
@@ -83,6 +85,7 @@ func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader
 	return c.uploadStream(ctx, br, mimeType, fileURI)
 }
 
+// cacheGetString は、キャッシュから文字列を取得します。存在しない場合は空文字列と false を返します。
 func (c *GeminiImageCore) cacheGetString(key string) (string, bool) {
 	if c.cache == nil {
 		return "", false
@@ -98,10 +101,12 @@ func (c *GeminiImageCore) cacheGetString(key string) (string, bool) {
 	return strVal, true
 }
 
+// getFromCache は、キャッシュからファイルのAPI URIを取得します。存在しない場合は空文字列と false を返します。
 func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {
 	return c.cacheGetString(cacheKeyFileAPIURI + fileURI)
 }
 
+// saveToCache は、キャッシュにファイルのAPI URIとファイル名を保存します。
 func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
 	if c.cache != nil {
 		c.cache.Set(cacheKeyFileAPIURI+fileURI, uri, c.expiration)
