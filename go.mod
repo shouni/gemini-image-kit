@@ -3,11 +3,11 @@ module github.com/shouni/gemini-image-kit
 go 1.26
 
 require (
-	github.com/shouni/go-gemini-client v1.2.3
+	github.com/shouni/go-gemini-client v1.2.4
 	github.com/shouni/go-http-kit v1.4.0
 	github.com/shouni/go-remote-io v1.3.2
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/genai v1.52.1
+	google.golang.org/genai v1.53.0
 )
 
 require (
