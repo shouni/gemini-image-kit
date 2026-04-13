@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/shouni/go-remote-io/remoteio"
 	"google.golang.org/genai"
 
 	"github.com/shouni/gemini-image-kit/imgutil"
@@ -21,7 +20,7 @@ import (
 // 呼び出し側は、読み込み終了後に必ず Close() を呼び出す必要があります。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	// 1. Cloud Storage の場合
-	if remoteio.IsRemoteURI(rawURL) {
+	if IsGCSURI(rawURL) {
 		return c.reader.Open(ctx, rawURL)
 	}
 
@@ -112,4 +111,10 @@ func validateUploadSource(br *bufio.Reader) error {
 		return fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
 	}
 	return nil
+}
+
+// IsGCSURI は、指定されたURIがGCS（Google Cloud Storage）のストレージURIであるかどうかを判定します。
+func IsGCSURI(uri string) bool {
+	const prefixGCS = "gs://"
+	return strings.HasPrefix(uri, prefixGCS)
 }

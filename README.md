@@ -57,7 +57,6 @@ gemini-image-kit/
 * [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
 * [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - **Backend（Vertex AI / Google AI）を抽象化するクライアント**
 * [shouni/go-http-kit](https://github.com/shouni/go-http-kit) - Net Armor統合型 HTTP 通信ライブラリ
-* [shouni/go-remote-io](https://github.com/shouni/go-remote-io) - マルチストレージ (GCS/HTTP/Local) Reader
 
 ---
 

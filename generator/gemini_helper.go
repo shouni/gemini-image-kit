@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/shouni/go-gemini-client/gemini"
-	"github.com/shouni/go-remote-io/remoteio"
 	"google.golang.org/genai"
 
 	"github.com/shouni/gemini-image-kit/imgutil"
@@ -48,7 +47,7 @@ func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.Im
 
 // resolveImagePart は ImageURI からパーツを生成します。
 func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageURI) *genai.Part {
-	if g.core.IsVertexAI() && remoteio.IsGCSURI(uri.ReferenceURL) {
+	if g.core.IsVertexAI() && IsGCSURI(uri.ReferenceURL) {
 		return buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL)
 	}
 	if uri.FileAPIURI != "" {
