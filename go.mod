@@ -4,7 +4,6 @@ go 1.26
 
 require (
 	github.com/shouni/go-gemini-client v1.2.4
-	github.com/shouni/go-http-kit v1.4.0
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/genai v1.53.0
 )

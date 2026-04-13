@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
-	"github.com/shouni/go-http-kit/httpkit"
 	"google.golang.org/genai"
 
 	"github.com/shouni/gemini-image-kit/imgutil"
@@ -26,7 +25,7 @@ const (
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
 	reader     ports.ContentReader
-	httpClient httpkit.Downloader
+	httpClient ports.Downloader
 	cache      ports.ImageCacher
 	expiration time.Duration
 	compress   bool
@@ -36,7 +35,7 @@ type GeminiImageCore struct {
 func NewGeminiImageCore(
 	aiClient gemini.GenerativeModel,
 	reader ports.ContentReader,
-	httpClient httpkit.Downloader,
+	httpClient ports.Downloader,
 	cache ports.ImageCacher,
 	cacheTTL time.Duration,
 	compress bool,
