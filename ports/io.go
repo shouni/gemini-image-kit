@@ -19,5 +19,8 @@ type ContentWriter interface {
 // Downloader は URL からデータをダウンロードし、提供された関数を使用してデータ ストリームを処理するためのインターフェイスを定義します。
 type Downloader interface {
 	FetchStream(ctx context.Context, url string, fn func(io.Reader) error) error
+
+	// GetStream は指定された URL からデータストリームを取得します。
+	// 呼び出し元は、使用後に必ず戻り値の io.ReadCloser を Close() する責任があります。
 	GetStream(ctx context.Context, url string) (io.ReadCloser, error)
 }
