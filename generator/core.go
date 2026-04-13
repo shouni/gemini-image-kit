@@ -10,7 +10,6 @@ import (
 
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/shouni/go-http-kit/httpkit"
-	"github.com/shouni/go-remote-io/remoteio"
 	"google.golang.org/genai"
 
 	"github.com/shouni/gemini-image-kit/imgutil"
@@ -26,7 +25,7 @@ const (
 // GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
 type GeminiImageCore struct {
 	aiClient   gemini.GenerativeModel
-	reader     remoteio.Reader
+	reader     ports.ContentReader
 	httpClient httpkit.Downloader
 	cache      ports.ImageCacher
 	expiration time.Duration
@@ -36,7 +35,7 @@ type GeminiImageCore struct {
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
 func NewGeminiImageCore(
 	aiClient gemini.GenerativeModel,
-	reader remoteio.Reader,
+	reader ports.ContentReader,
 	httpClient httpkit.Downloader,
 	cache ports.ImageCacher,
 	cacheTTL time.Duration,
