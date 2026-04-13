@@ -12,6 +12,6 @@ type ContentReader interface {
 
 // ContentWriter はコンテンツを書き込むためのインターフェースです。
 type ContentWriter interface {
-	// Write は、指定された path に応じて GCS、S3、またはローカルファイルへデータを書き込みます。
+	// Write は、指定された path または URI へデータを書き込みます。
 	Write(ctx context.Context, path string, contentReader io.Reader, contentType string) error
 }
