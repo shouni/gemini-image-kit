@@ -1,7 +1,10 @@
 package generator
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/shouni/gemini-image-kit/ports"
 )
@@ -50,4 +53,39 @@ func TestGeminiGenerator_GenerateMangaPage_Structure(t *testing.T) {
 			t.Errorf("first image API URI mismatch: %s", req.Images[0].FileAPIURI)
 		}
 	})
+}
+
+func TestGeminiGenerator_GenerateMangaPanel_ReturnsImagePreparationError(t *testing.T) {
+	ctx := context.Background()
+	ai := &mockAIClient{}
+	core, err := NewGeminiImageCore(
+		ai,
+		&mockReader{},
+		&mockHTTPClient{err: errors.New("download failed")},
+		&mockCache{},
+		time.Hour,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("failed to create core: %v", err)
+	}
+	g, err := NewGeminiGenerator(core)
+	if err != nil {
+		t.Fatalf("failed to create generator: %v", err)
+	}
+
+	_, err = g.GenerateMangaPanel(ctx, ports.ImagePanelRequest{
+		GenerationOptions: ports.GenerationOptions{
+			Model:  "gemini-test-model",
+			Prompt: "test prompt",
+		},
+		Image: ports.ImageURI{ReferenceURL: "https://example.com/source.png"},
+	})
+
+	if err == nil {
+		t.Fatal("expected image preparation error")
+	}
+	if ai.generateCalled {
+		t.Fatal("GenerateWithParts should not be called when image preparation fails")
+	}
 }

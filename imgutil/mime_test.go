@@ -28,3 +28,33 @@ func TestGuessMIMEType(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectMIMEType(t *testing.T) {
+	pngHeader := []byte("\x89PNG\r\n\x1a\n")
+
+	got := DetectMIMEType(pngHeader)
+
+	if got != "image/png" {
+		t.Errorf("DetectMIMEType() = %q; want image/png", got)
+	}
+}
+
+func TestIsImageMIMEType(t *testing.T) {
+	tests := []struct {
+		mimeType string
+		expected bool
+	}{
+		{"image/png", true},
+		{"image/jpeg", true},
+		{"text/plain; charset=utf-8", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.mimeType, func(t *testing.T) {
+			got := IsImageMIMEType(tt.mimeType)
+			if got != tt.expected {
+				t.Errorf("IsImageMIMEType(%q) = %v; want %v", tt.mimeType, got, tt.expected)
+			}
+		})
+	}
+}

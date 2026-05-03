@@ -23,7 +23,10 @@ func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOpti
 	}
 
 	// 1. 画像アセット（素材）を収集
-	parts := g.collectImageParts(ctx, uris)
+	parts, err := g.collectImageParts(ctx, uris)
+	if err != nil {
+		return nil, err
+	}
 
 	// 2. 最後にテキストプロンプトを追加
 	parts = append(parts, &genai.Part{Text: finalPrompt})
@@ -34,29 +37,37 @@ func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOpti
 }
 
 // collectImageParts は ImageURI 構造体からパーツを生成します。
-func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.ImageURI) []*genai.Part {
+func (g *GeminiGenerator) collectImageParts(ctx context.Context, uris []ports.ImageURI) ([]*genai.Part, error) {
 	parts := make([]*genai.Part, 0, len(uris))
 
 	for _, uri := range uris {
-		if part := g.resolveImagePart(ctx, uri); part != nil {
+		part, err := g.resolveImagePart(ctx, uri)
+		if err != nil {
+			return nil, err
+		}
+		if part != nil {
 			parts = append(parts, part)
 		}
 	}
-	return parts
+	return parts, nil
 }
 
 // resolveImagePart は ImageURI からパーツを生成します。
-func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageURI) *genai.Part {
+func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageURI) (*genai.Part, error) {
 	if g.core.IsVertexAI() && IsGCSURI(uri.ReferenceURL) {
-		return buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL)
+		return buildFileDataPart(uri.ReferenceURL, uri.ReferenceURL), nil
 	}
 	if uri.FileAPIURI != "" {
-		return buildFileDataPart(uri.FileAPIURI, uri.ReferenceURL)
+		return buildFileDataPart(uri.FileAPIURI, uri.ReferenceURL), nil
 	}
 	if uri.ReferenceURL == "" {
-		return nil
+		return nil, nil
 	}
-	return g.core.PrepareImagePart(ctx, uri.ReferenceURL)
+	part, err := g.core.PrepareImagePart(ctx, uri.ReferenceURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare image part for %q: %w", uri.ReferenceURL, err)
+	}
+	return part, nil
 }
 
 // buildFileDataPart はファイルデータパーツを生成します。

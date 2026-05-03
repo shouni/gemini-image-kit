@@ -123,7 +123,10 @@ func TestCollectImageParts(t *testing.T) {
 			core, _ = NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0, true)
 			g = &GeminiGenerator{core: core}
 
-			parts := g.collectImageParts(ctx, tt.uris)
+			parts, err := g.collectImageParts(ctx, tt.uris)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			tt.verify(t, parts)
 		})
 	}

@@ -36,7 +36,7 @@ type ImageExecutor interface {
 	// ExecuteRequest は、指定されたパラメータで画像生成リクエストを実行し、結果を返します。
 	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*ImageResponse, error)
 	// PrepareImagePart は、指定された画像URLから後続処理で利用する画像パーツを作成します。
-	PrepareImagePart(ctx context.Context, rawURL string) *genai.Part
+	PrepareImagePart(ctx context.Context, rawURL string) (*genai.Part, error)
 	Backend
 }
 

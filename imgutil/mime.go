@@ -1,6 +1,7 @@
 package imgutil
 
 import (
+	"net/http"
 	"path/filepath"
 	"strings"
 )
@@ -21,4 +22,14 @@ func GuessMIMEType(path string) string {
 	default:
 		return "image/jpeg"
 	}
+}
+
+// DetectMIMEType はバイト列の内容から MIMEType を判定します。
+func DetectMIMEType(data []byte) string {
+	return http.DetectContentType(data)
+}
+
+// IsImageMIMEType は MIMEType が画像として扱えるかを判定します。
+func IsImageMIMEType(mimeType string) bool {
+	return strings.HasPrefix(mimeType, "image/")
 }

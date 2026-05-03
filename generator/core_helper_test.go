@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -26,8 +27,11 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 		cache.Set(cacheKeyFileAPIURI+rawURL, fileURI, time.Hour)
 
 		// メソッド名を大文字に変更
-		part := core.PrepareImagePart(ctx, rawURL)
+		part, err := core.PrepareImagePart(ctx, rawURL)
 
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if part == nil || part.FileData == nil {
 			t.Fatal("expected FileData part, got nil or other")
 		}
@@ -36,11 +40,32 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 		}
 	})
 
-	t.Run("不正なURLはnilを返す(fetchImageData内のIsSafeURLで失敗)", func(t *testing.T) {
-		// ローカルホスト等は IsSafeURL で false になる想定
-		part := core.PrepareImagePart(ctx, "http://127.0.0.1/evil.png")
+	t.Run("画像として扱えないデータはエラーを返す", func(t *testing.T) {
+		cache.Clear()
+		part, err := core.PrepareImagePart(ctx, "https://example.com/not-image.png")
+		if err == nil {
+			t.Fatal("expected error for invalid image data")
+		}
 		if part != nil {
-			t.Error("expected nil for unsafe URL")
+			t.Error("expected nil part for invalid image data")
+		}
+	})
+
+	t.Run("取得失敗はエラーを返す", func(t *testing.T) {
+		cache.Clear()
+		fetchErr := errors.New("network down")
+		core := &GeminiImageCore{
+			cache:      cache,
+			httpClient: &mockHTTPClient{err: fetchErr},
+			reader:     &mockReader{},
+		}
+
+		part, err := core.PrepareImagePart(ctx, "https://example.com/image.png")
+		if err == nil {
+			t.Fatal("expected fetch error")
+		}
+		if part != nil {
+			t.Error("expected nil part for fetch error")
 		}
 	})
 }
