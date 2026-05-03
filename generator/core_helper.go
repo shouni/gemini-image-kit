@@ -43,7 +43,7 @@ func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeTyp
 }
 
 // uploadCompressed は画像を圧縮してからアップロードします。
-func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
+func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, fileURI string) (string, string, error) {
 	img, _, err := image.Decode(r)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to decode image for compression: %w", err)
@@ -56,13 +56,13 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, mim
 	}()
 
 	defer pr.Close()
-	return c.aiClient.UploadFile(ctx, pr, mimeType, filepath.Base(fileURI))
+	return c.aiClient.UploadFile(ctx, pr, "image/jpeg", filepath.Base(fileURI))
 }
 
 // uploadByStrategy は、画像の圧縮設定に基づいてアップロードを実行します。
 func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (string, string, error) {
 	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
-		return c.uploadCompressed(ctx, br, mimeType, fileURI)
+		return c.uploadCompressed(ctx, br, fileURI)
 	}
 	return c.uploadStream(ctx, br, mimeType, fileURI)
 }
@@ -96,21 +96,21 @@ func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
 	}
 }
 
-// validateUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証します。
-func validateUploadSource(br *bufio.Reader) error {
+// detectUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証し、MIMETypeを返します。
+func detectUploadSource(br *bufio.Reader) (string, error) {
 	head, err := br.Peek(512)
 	if err != nil && err != io.EOF {
-		return fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+		return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
 	}
 	if len(head) == 0 {
-		return fmt.Errorf("画像データが空です")
+		return "", fmt.Errorf("画像データが空です")
 	}
 
-	detectedMime := http.DetectContentType(head)
-	if !strings.HasPrefix(detectedMime, "image/") {
-		return fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+	detectedMime := imgutil.DetectMIMEType(head)
+	if !imgutil.IsImageMIMEType(detectedMime) {
+		return "", fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
 	}
-	return nil
+	return detectedMime, nil
 }
 
 // IsGCSURI は、指定されたURIがGCS（Google Cloud Storage）のストレージURIであるかどうかを判定します。

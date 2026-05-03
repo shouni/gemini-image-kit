@@ -18,10 +18,13 @@ const (
 )
 
 type mockAIClient struct {
-	uploadCalled bool
-	deleteCalled bool
-	lastFileName string
-	backend      genai.Backend
+	uploadCalled       bool
+	deleteCalled       bool
+	generateCalled     bool
+	lastFileName       string
+	lastUploadMIMEType string
+	lastUploadData     []byte
+	backend            genai.Backend
 }
 
 // IsVertexAI を実装
@@ -30,12 +33,14 @@ func (m *mockAIClient) IsVertexAI() bool {
 }
 
 func (m *mockAIClient) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error) {
-	_, err := io.ReadAll(r)
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return "", "", err
 	}
 
 	m.uploadCalled = true
+	m.lastUploadMIMEType = mimeType
+	m.lastUploadData = data
 	return MockFileUploadURI, MockFileUploadName, nil
 }
 
@@ -50,6 +55,7 @@ func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt
 }
 
 func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
+	m.generateCalled = true
 	return &gemini.Response{
 		RawResponse: &genai.GenerateContentResponse{
 			Candidates: []*genai.Candidate{{
@@ -95,15 +101,6 @@ func (m *mockReader) List(ctx context.Context, uri string, fn func(string) error
 type mockHTTPClient struct {
 	data []byte
 	err  error
-}
-
-// FetchStream の実装
-func (m *mockHTTPClient) FetchStream(ctx context.Context, url string, fn func(io.Reader) error) error {
-	if m.err != nil {
-		return m.err
-	}
-	// テスト用に m.data を流し込む
-	return fn(bytes.NewReader(m.data))
 }
 
 // GetStream の実装

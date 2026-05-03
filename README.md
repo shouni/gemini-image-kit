@@ -12,26 +12,26 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットです。
 
-単なる API ラッパーではなく、「**GCS/外部URLからの参照画像自動取得**」「**Gemini File API とキャッシュの一貫性管理**」「**SSRFプロテクション**」「**インメモリ画像圧縮**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されています。
+単なる API ラッパーではなく、「**GCS/外部URLからの参照画像自動取得**」「**Gemini File API とキャッシュの一貫性管理**」「**注入可能な Downloader による取得ポリシー制御**」「**インメモリ画像圧縮**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されています。
 
 ---
 
 ## ✨ 主な特徴 (Features)
 
 * **🖼️ Unified Generator**:
-    * テキストプロンプトと複数の画像アセットを組み合わせたマルチモーダル生成を一貫して管理。
+  * テキストプロンプトと複数の画像アセットを組み合わせたマルチモーダル生成を一貫して管理。
 * **🔗 Hybrid Asset Workflow**:
-    * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
-    * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。
+  * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
+  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。
 * **☁️ Intelligent MIME Prediction**:
-    * GCS や外部 URI からの参照時、拡張子に基づいて `MIMEType` を自動推測。SDK の `Required` 制約を透過的に解決します。
-* **🛡️ SSRF Protected**:
-    * 外部 URL 取得時、名前解決後の IP レベルで内部ネットワークへのアクセスを遮断するバリデーション。
+  * GCS や外部 URI からの参照時、拡張子に基づいて `MIMEType` を自動推測。SDK の `Required` 制約を透過的に解決します。
+* **🛡️ Fetch Policy Injection**:
+  * 外部 URL 取得は `ports.Downloader` 経由に限定。SSRF 対策や許可ドメイン制御は、アプリケーション側で安全な Downloader を注入して適用します。
 * **⚡️ Optimized Image Handling**:
-    * **Stream-Based Processing**: `bufio.Reader` と `io.Pipe` を活用し、画像を全量メモリに読み込まずにストリーム転送。巨大な画像でもメモリ消費を最小限に抑え、アップロードのオーバーヘッドを劇的に改善。
-    * **Selective Optimization**: 圧縮が不要な場合はストリームで直接転送、必要な場合のみJPEG圧縮を適用するハイブリッド設計により、効率とコスト（API転送量）のバランスを動的に最適化。
+  * **Stream-Based Upload**: File API へのアップロードは `bufio.Reader` と `io.Pipe` を活用し、圧縮不要な場合はストリームで直接転送します。
+  * **Selective Optimization**: PNG/GIF など圧縮対象の画像は JPEG に変換し、変換後の MIMEType も実データに合わせて送信します。
 * **🧬 Robust Design**:
-    * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
+  * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
 
 ---
 
@@ -42,7 +42,7 @@ gemini-image-kit/
 ├── generator/           # 画像生成のコアロジック
 │   ├── core.go          # GeminiImageCore（File API のライフサイクル管理）
 │   ├── core_helper.go   # 画像フェッチ・パース処理
-│   ├── gemini.go        # GeminiImageAdapter（高レベルジェネレーター）
+│   ├── gemini.go        # GeminiGenerator（高レベルジェネレーター）
 │   └── gemini_helper.go # パーツ収集、プロンプト構築ロジック
 ├── ports/               # 外部インターフェースおよび入出力モデル定義
 │   ├── interfaces.go    # ImageExecutor / ImageCacher 等の抽象化定義

@@ -77,11 +77,11 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 	}
 	defer rc.Close()
 	br := bufio.NewReader(rc)
-	if err := validateUploadSource(br); err != nil {
+	mimeType, err := detectUploadSource(br)
+	if err != nil {
 		return "", err
 	}
 
-	mimeType := imgutil.GuessMIMEType(fileURI)
 	uri, fileName, err := c.uploadByStrategy(ctx, br, mimeType, fileURI)
 	if err != nil {
 		return "", err
@@ -100,31 +100,40 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 }
 
 // PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
-func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) *genai.Part {
+func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (*genai.Part, error) {
 	if uri, ok := c.cacheGetString(cacheKeyFileAPIURI + rawURL); ok {
-		return &genai.Part{FileData: &genai.FileData{FileURI: uri}}
+		return &genai.Part{FileData: &genai.FileData{FileURI: uri}}, nil
 	}
 
 	rc, err := c.fetchImageData(ctx, rawURL)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to fetch image data: %w", err)
 	}
 	defer rc.Close()
 
 	rawData, err := io.ReadAll(rc)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to read image data: %w", err)
 	}
 
 	finalData := rawData
-	if c.compress {
+	mimeType := imgutil.DetectMIMEType(rawData)
+	if !imgutil.IsImageMIMEType(mimeType) {
+		return nil, fmt.Errorf("unsupported file format: %s", mimeType)
+	}
+	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
 		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
-		if err == nil {
-			finalData = compressed
+		if err != nil {
+			return nil, fmt.Errorf("failed to compress image: %w", err)
 		}
+		finalData = compressed
 	}
 
-	return c.toPart(finalData)
+	part := c.toPart(finalData)
+	if part == nil {
+		return nil, fmt.Errorf("unsupported file format: %s", imgutil.DetectMIMEType(finalData))
+	}
+	return part, nil
 }
 
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
