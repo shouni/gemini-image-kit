@@ -3,9 +3,9 @@ module github.com/shouni/gemini-image-kit
 go 1.26
 
 require (
-	github.com/shouni/go-gemini-client v1.2.4
+	github.com/shouni/go-gemini-client v1.2.10
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/genai v1.53.0
+	google.golang.org/genai v1.55.0
 )
 
 require (
@@ -24,7 +24,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.19.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/shouni/netarmor v1.0.2 // indirect
+	github.com/shouni/netarmor v1.0.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
 	go.opentelemetry.io/otel v1.42.0 // indirect
