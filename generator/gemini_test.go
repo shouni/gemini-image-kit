@@ -9,10 +9,10 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// GenerateMangaPanel の構造チェック
-func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
+// GenerateSingleImage の構造チェック
+func TestGeminiGenerator_GenerateSingleImage_Structure(t *testing.T) {
 	t.Run("FileAPIURIとImageSizeが正しく扱われること", func(t *testing.T) {
-		req := ports.ImagePanelRequest{
+		req := ports.SingleImageRequest{
 			GenerationOptions: ports.GenerationOptions{
 				Prompt:    "test prompt",
 				ImageSize: "2K",
@@ -33,9 +33,9 @@ func TestGeminiGenerator_GenerateMangaPanel_Structure(t *testing.T) {
 	})
 }
 
-func TestGeminiGenerator_GenerateMangaPage_Structure(t *testing.T) {
+func TestGeminiGenerator_GenerateFusedImage_Structure(t *testing.T) {
 	t.Run("複数枚のImageURIが保持されること", func(t *testing.T) {
-		req := ports.ImagePageRequest{
+		req := ports.ImageFusionRequest{
 			GenerationOptions: ports.GenerationOptions{
 				AspectRatio: "16:9",
 			},
@@ -55,7 +55,7 @@ func TestGeminiGenerator_GenerateMangaPage_Structure(t *testing.T) {
 	})
 }
 
-func TestGeminiGenerator_GenerateMangaPanel_ReturnsImagePreparationError(t *testing.T) {
+func TestGeminiGenerator_GenerateSingleImage_ReturnsImagePreparationError(t *testing.T) {
 	ctx := context.Background()
 	ai := &mockAIClient{}
 	core, err := NewGeminiImageCore(
@@ -74,7 +74,7 @@ func TestGeminiGenerator_GenerateMangaPanel_ReturnsImagePreparationError(t *test
 		t.Fatalf("failed to create generator: %v", err)
 	}
 
-	_, err = g.GenerateMangaPanel(ctx, ports.ImagePanelRequest{
+	_, err = g.GenerateSingleImage(ctx, ports.SingleImageRequest{
 		GenerationOptions: ports.GenerationOptions{
 			Model:  "gemini-test-model",
 			Prompt: "test prompt",

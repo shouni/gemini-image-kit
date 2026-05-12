@@ -17,14 +17,14 @@ type GenerationOptions struct {
 	Seed           *int64
 }
 
-// ImagePanelRequest は単一の画像生成要求です。
-type ImagePanelRequest struct {
+// SingleImageRequest は単一の参照画像を使う画像生成要求です。
+type SingleImageRequest struct {
 	GenerationOptions
 	Image ImageURI
 }
 
-// ImagePageRequest は漫画1ページの一括生成要求です。
-type ImagePageRequest struct {
+// ImageFusionRequest は複数の参照画像を統合して1枚の画像を生成する要求です。
+type ImageFusionRequest struct {
 	GenerationOptions
 	Images []ImageURI
 }

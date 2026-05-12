@@ -82,37 +82,37 @@ func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
 
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
-	// Vertex AI かどうかで安全設定の定数を切り替え
-	threshold := genai.HarmBlockThresholdOff
-	isVertex := g.core.IsVertexAI()
-
-	if isVertex {
-		threshold = genai.HarmBlockThresholdBlockNone
-	}
-
-	defaultSafetySettings := []*genai.SafetySetting{
-		{Category: genai.HarmCategoryHarassment, Threshold: threshold},
-		{Category: genai.HarmCategoryHateSpeech, Threshold: threshold},
-		{Category: genai.HarmCategorySexuallyExplicit, Threshold: threshold},
-		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
-	}
-
-	// 基本となるオプションを構築
 	opts := gemini.GenerateOptions{
 		AspectRatio:    ar,
 		ImageSize:      size,
 		SystemPrompt:   sp,
 		Seed:           seed,
-		SafetySettings: defaultSafetySettings,
+		SafetySettings: g.buildSafetySettings(),
 	}
 
 	// Vertex AI の場合のみ PersonGeneration を設定する
 	// Gemini API (Google AI) ではこのフィールドが含まれると致命的エラーになるため
-	if isVertex {
+	if g.core.IsVertexAI() {
 		opts.PersonGeneration = gemini.PersonGenerationAllowAll
 	}
 
 	return opts
+}
+
+// buildSafetySettings は安全性設定を返します。
+func (g *GeminiGenerator) buildSafetySettings() []*genai.SafetySetting {
+	threshold := genai.HarmBlockThresholdOff
+
+	if g.core.IsVertexAI() {
+		threshold = genai.HarmBlockThresholdBlockNone
+	}
+
+	return []*genai.SafetySetting{
+		{Category: genai.HarmCategoryHarassment, Threshold: threshold},
+		{Category: genai.HarmCategoryHateSpeech, Threshold: threshold},
+		{Category: genai.HarmCategorySexuallyExplicit, Threshold: threshold},
+		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
+	}
 }
 
 // buildFinalPrompt はプロンプトと否定プロンプトを結合します。
