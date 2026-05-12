@@ -82,17 +82,18 @@ func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
 
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
+	isVertex := g.core.IsVertexAI()
 	opts := gemini.GenerateOptions{
 		AspectRatio:    ar,
 		ImageSize:      size,
 		SystemPrompt:   sp,
 		Seed:           seed,
-		SafetySettings: g.buildSafetySettings(),
+		SafetySettings: g.buildSafetySettings(isVertex),
 	}
 
 	// Vertex AI の場合のみ PersonGeneration を設定する
 	// Gemini API (Google AI) ではこのフィールドが含まれると致命的エラーになるため
-	if g.core.IsVertexAI() {
+	if isVertex {
 		opts.PersonGeneration = gemini.PersonGenerationAllowAll
 	}
 
@@ -100,10 +101,10 @@ func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.Gen
 }
 
 // buildSafetySettings は安全性設定を返します。
-func (g *GeminiGenerator) buildSafetySettings() []*genai.SafetySetting {
+func (g *GeminiGenerator) buildSafetySettings(isVertex bool) []*genai.SafetySetting {
 	threshold := genai.HarmBlockThresholdOff
 
-	if g.core.IsVertexAI() {
+	if isVertex {
 		threshold = genai.HarmBlockThresholdBlockNone
 	}
 
