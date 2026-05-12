@@ -4,13 +4,13 @@ import (
 	"testing"
 )
 
-func TestImageGenerationRequest_Fields(t *testing.T) {
+func TestSingleImageRequest_Fields(t *testing.T) {
 	t.Run("should correctly store ImageURI and GenerationOptions", func(t *testing.T) {
 		fileAPI := "https://generativelanguage.googleapis.com/v1beta/files/test-id"
 		refURL := "gs://my-bucket/character.png"
 		size := "2K"
 
-		req := ImagePanelRequest{
+		req := SingleImageRequest{
 			Image: ImageURI{
 				FileAPIURI:   fileAPI,
 				ReferenceURL: refURL,
@@ -34,14 +34,14 @@ func TestImageGenerationRequest_Fields(t *testing.T) {
 	})
 }
 
-func TestImagePageRequest_Fields(t *testing.T) {
+func TestImageFusionRequest_Fields(t *testing.T) {
 	t.Run("should correctly store multiple ImageURIs", func(t *testing.T) {
 		uris := []ImageURI{
 			{ReferenceURL: "url1", FileAPIURI: "api1"},
 			{ReferenceURL: "url2", FileAPIURI: "api2"},
 		}
 
-		req := ImagePageRequest{
+		req := ImageFusionRequest{
 			Images: uris,
 		}
 

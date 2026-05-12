@@ -30,8 +30,8 @@ func (g *GeminiGenerator) IsVertexAI() bool {
 	return g.core.IsVertexAI()
 }
 
-// GenerateMangaPanel は単一のパネル画像を生成します。
-func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req ports.ImagePanelRequest) (*ports.ImageResponse, error) {
+// GenerateSingleImage は単一の参照画像を使って画像を生成します。
+func (g *GeminiGenerator) GenerateSingleImage(ctx context.Context, req ports.SingleImageRequest) (*ports.ImageResponse, error) {
 	return g.generate(
 		ctx,
 		req.GenerationOptions,
@@ -39,8 +39,8 @@ func (g *GeminiGenerator) GenerateMangaPanel(ctx context.Context, req ports.Imag
 	)
 }
 
-// GenerateMangaPage は複数アセットを参照してページ画像を生成します。
-func (g *GeminiGenerator) GenerateMangaPage(ctx context.Context, req ports.ImagePageRequest) (*ports.ImageResponse, error) {
+// GenerateFusedImage は複数の参照画像を統合して1枚の画像を生成します。
+func (g *GeminiGenerator) GenerateFusedImage(ctx context.Context, req ports.ImageFusionRequest) (*ports.ImageResponse, error) {
 	return g.generate(
 		ctx,
 		req.GenerationOptions,

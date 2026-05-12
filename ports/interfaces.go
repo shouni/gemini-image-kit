@@ -16,10 +16,10 @@ type Backend interface {
 
 // ImageGenerator は、ビジネスロジック層が利用する統合窓口です。
 type ImageGenerator interface {
-	// GenerateMangaPanel は、提供されたプロンプトと構成パラメータに基づいて、単一のマンガパネル画像を生成します。
-	GenerateMangaPanel(ctx context.Context, req ImagePanelRequest) (*ImageResponse, error)
-	// GenerateMangaPage は、提供されたプロンプトと構成パラメータに基づいてマンガページのイメージを生成します。
-	GenerateMangaPage(ctx context.Context, req ImagePageRequest) (*ImageResponse, error)
+	// GenerateSingleImage は、単一の参照画像と構成パラメータに基づいて画像を生成します。
+	GenerateSingleImage(ctx context.Context, req SingleImageRequest) (*ImageResponse, error)
+	// GenerateFusedImage は、複数の参照画像と構成パラメータに基づいて1枚の画像を生成します。
+	GenerateFusedImage(ctx context.Context, req ImageFusionRequest) (*ImageResponse, error)
 	Backend
 }
 

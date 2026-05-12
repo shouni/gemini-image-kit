@@ -14,12 +14,16 @@
 
 単なる API ラッパーではなく、「**GCS/外部URLからの参照画像自動取得**」「**Gemini File API とキャッシュの一貫性管理**」「**注入可能な Downloader による取得ポリシー制御**」「**インメモリ画像圧縮**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されています。
 
+`SingleImageRequest` による単一参照画像からの生成と、`ImageFusionRequest` による複数参照画像を統合した1枚の画像生成をサポートします。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。
+
 ---
 
 ## ✨ 主な特徴 (Features)
 
 * **🖼️ Unified Generator**:
-  * テキストプロンプトと複数の画像アセットを組み合わせたマルチモーダル生成を一貫して管理。
+  * `GenerateSingleImage` と `GenerateFusedImage` により、単一参照画像の生成と複数参照画像の統合生成を一貫して管理。
+* **🧩 Image Fusion Workflow**:
+  * 複数の参照画像を Gemini の入力パーツとして収集し、プロンプトと組み合わせて1枚の画像を生成。
 * **🔗 Hybrid Asset Workflow**:
   * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
   * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。
@@ -32,6 +36,18 @@
   * **Selective Optimization**: PNG/GIF など圧縮対象の画像は JPEG に変換し、変換後の MIMEType も実データに合わせて送信します。
 * **🧬 Robust Design**:
   * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
+
+---
+
+## 🧭 Public API
+
+```go
+// 1枚の参照画像を使って画像を生成
+GenerateSingleImage(ctx, ports.SingleImageRequest)
+
+// 複数の参照画像を統合して1枚の画像を生成
+GenerateFusedImage(ctx, ports.ImageFusionRequest)
+```
 
 ---
 
