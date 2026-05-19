@@ -51,6 +51,190 @@ GenerateFusedImage(ctx, ports.ImageFusionRequest)
 
 ---
 
+## 🚀 Quick Start
+
+### 1. Gemini API で単一参照画像から生成する
+
+```go
+package main
+
+import (
+    "context"
+    "errors"
+    "io"
+    "log"
+    "net/http"
+    "os"
+    "sync"
+    "time"
+
+    client "github.com/shouni/go-gemini-client/gemini"
+    "github.com/shouni/gemini-image-kit/generator"
+    "github.com/shouni/gemini-image-kit/ports"
+)
+
+func main() {
+    ctx := context.Background()
+
+    ai, err := client.NewClient(ctx, client.Config{
+       APIKey: os.Getenv("GEMINI_API_KEY"),
+    })
+    if err != nil {
+       log.Fatal(err)
+    }
+
+    core, err := generator.NewGeminiImageCore(
+       ai,
+       noStorageReader{},
+       httpDownloader{client: http.DefaultClient},
+       newMemoryCache(),
+       24*time.Hour,
+       true, // PNG/GIF を JPEG に変換して送信サイズを抑える
+    )
+    if err != nil {
+       log.Fatal(err)
+    }
+
+    g, err := generator.NewGeminiGenerator(core)
+    if err != nil {
+       log.Fatal(err)
+    }
+
+    resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
+       GenerationOptions: ports.GenerationOptions{
+          Model:          "gemini-3-pro-image-preview",
+          Prompt:         "参照画像の人物を、白背景の商品広告風ポートレートにしてください。",
+          NegativePrompt: "low quality, blurry, distorted hands",
+          AspectRatio:    "1:1",
+          ImageSize:      "1K",
+       },
+       Image: ports.ImageURI{
+          ReferenceURL: "https://example.com/reference.png",
+       },
+    })
+    if err != nil {
+       log.Fatal(err)
+    }
+
+    if err := os.WriteFile("output.png", resp.Data, 0644); err != nil {
+       log.Fatal(err)
+    }
+}
+
+type httpDownloader struct {
+    client *http.Client
+}
+
+func (d httpDownloader) GetStream(ctx context.Context, url string) (io.ReadCloser, error) {
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+       return nil, err
+    }
+    resp, err := d.client.Do(req)
+    if err != nil {
+       return nil, err
+    }
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+       resp.Body.Close()
+       return nil, errors.New("failed to download image")
+    }
+    return resp.Body, nil
+}
+
+type noStorageReader struct{}
+
+func (noStorageReader) Open(ctx context.Context, uri string) (io.ReadCloser, error) {
+    return nil, errors.New("storage reader is not configured")
+}
+
+type memoryCache struct {
+    mu   sync.RWMutex
+    data map[string]any
+}
+
+func newMemoryCache() *memoryCache {
+    return &memoryCache{data: make(map[string]any)}
+}
+
+func (c *memoryCache) Get(key string) (any, bool) {
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+    v, ok := c.data[key]
+    return v, ok
+}
+
+func (c *memoryCache) Set(key string, value any, ttl time.Duration) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.data[key] = value
+}
+```
+
+> 外部 URL を受け取る場合は、`ports.Downloader` 側で許可ドメイン、IP レンジ、タイムアウト、最大サイズなどを制御してください。`http.DefaultClient` は最小例です。
+
+### 2. 複数の参照画像を統合して生成する
+
+```go
+resp, err := g.GenerateFusedImage(ctx, ports.ImageFusionRequest{
+    GenerationOptions: ports.GenerationOptions{
+       Model:       "gemini-3-pro-image-preview",
+       Prompt:      "1枚目のキャラクターを、2枚目の服装と3枚目の背景に自然に合成してください。",
+       AspectRatio: "16:9",
+       ImageSize:   "2K",
+    },
+    Images: []ports.ImageURI{
+       {ReferenceURL: "https://example.com/character.png"},
+       {ReferenceURL: "https://example.com/outfit.png"},
+       {ReferenceURL: "https://example.com/background.png"},
+    },
+})
+```
+
+### 3. Vertex AI で GCS 画像を直接参照する
+
+Vertex AI モードでは、`gs://` の参照画像はダウンロードせずに Gemini へ直接渡します。
+
+```go
+ai, err := client.NewClient(ctx, client.Config{
+    ProjectID:  "your-google-cloud-project-id",
+    LocationID: "asia-northeast1",
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+core, err := generator.NewGeminiImageCore(
+    ai,
+    noStorageReader{},
+    httpDownloader{client: http.DefaultClient},
+    newMemoryCache(),
+    24*time.Hour,
+    false,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+g, err := generator.NewGeminiGenerator(core)
+if err != nil {
+    log.Fatal(err)
+}
+
+resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
+    GenerationOptions: ports.GenerationOptions{
+       Model:       "gemini-3-pro-image-preview",
+       Prompt:      "この商品画像を、SNS 広告向けの高級感ある構図にしてください。",
+       AspectRatio: "4:5",
+       ImageSize:   "1K",
+    },
+    Image: ports.ImageURI{
+       ReferenceURL: "gs://your-bucket/products/source.png",
+    },
+})
+```
+
+---
+
 ## 📂 プロジェクト構造 (Project Structure)
 
 ```text
@@ -81,5 +265,3 @@ gemini-image-kit/
 ### 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
-
----
