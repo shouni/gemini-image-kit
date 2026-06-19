@@ -136,6 +136,37 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (
 	return part, nil
 }
 
+// PrepareReferenceImage は URL または cloud storage から編集 API 用の参照画像を準備します。
+func (c *GeminiImageCore) PrepareReferenceImage(ctx context.Context, rawURL string) (*genai.Image, error) {
+	if c.IsVertexAI() && IsGCSURI(rawURL) {
+		return &genai.Image{
+			GCSURI:   rawURL,
+			MIMEType: imgutil.GuessMIMEType(rawURL),
+		}, nil
+	}
+
+	rc, err := c.fetchImageData(ctx, rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch image data: %w", err)
+	}
+	defer rc.Close()
+
+	rawData, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read image data: %w", err)
+	}
+
+	mimeType := imgutil.DetectMIMEType(rawData)
+	if !imgutil.IsImageMIMEType(mimeType) {
+		return nil, fmt.Errorf("unsupported file format: %s", mimeType)
+	}
+
+	return &genai.Image{
+		ImageBytes: rawData,
+		MIMEType:   mimeType,
+	}, nil
+}
+
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
 func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
 	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, opts)
@@ -144,6 +175,16 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 	}
 
 	return c.ParseToResponse(resp, ports.DereferenceSeed(opts.Seed))
+}
+
+// ExecuteEditRequest は Gemini の画像編集 API を呼び出し、レスポンスをパースします。
+func (c *GeminiImageCore) ExecuteEditRequest(ctx context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig, seed int64) (*ports.ImageResponse, error) {
+	resp, err := c.aiClient.EditImage(ctx, model, prompt, referenceImages, config)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ParseEditToResponse(resp, seed)
 }
 
 // ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
@@ -173,4 +214,23 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*p
 	}
 
 	return nil, fmt.Errorf("no image data found in response parts")
+}
+
+// ParseEditToResponse は Gemini の画像編集レスポンスを検証し、画像データを抽出します。
+func (c *GeminiImageCore) ParseEditToResponse(resp *genai.EditImageResponse, seed int64) (*ports.ImageResponse, error) {
+	if resp == nil || len(resp.GeneratedImages) == 0 {
+		return nil, fmt.Errorf("invalid or empty edit response from Gemini")
+	}
+
+	for _, generated := range resp.GeneratedImages {
+		if generated != nil && generated.Image != nil {
+			return &ports.ImageResponse{
+				Data:     generated.Image.ImageBytes,
+				MimeType: generated.Image.MIMEType,
+				UsedSeed: seed,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no image data found in edit response")
 }
