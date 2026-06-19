@@ -175,6 +175,9 @@ func TestGeminiGenerator_EditImage_RejectsOutOfRangeSeed(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected seed range error")
 	}
+	if !strings.Contains(err.Error(), "seed 2147483648 must be within int32 range") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if ai.editCalled {
 		t.Fatal("EditImage should not be called with out-of-range seed")
 	}

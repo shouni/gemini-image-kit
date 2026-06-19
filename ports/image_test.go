@@ -34,6 +34,26 @@ func TestSingleImageRequest_Fields(t *testing.T) {
 	})
 }
 
+func TestImageURI_IsEmpty(t *testing.T) {
+	tests := []struct {
+		name string
+		uri  ImageURI
+		want bool
+	}{
+		{name: "empty", uri: ImageURI{}, want: true},
+		{name: "reference URL", uri: ImageURI{ReferenceURL: "https://example.com/image.png"}, want: false},
+		{name: "file API URI", uri: ImageURI{FileAPIURI: "https://generativelanguage.googleapis.com/v1beta/files/test"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.uri.IsEmpty(); got != tt.want {
+				t.Fatalf("IsEmpty() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestImageFusionRequest_Fields(t *testing.T) {
 	t.Run("should correctly store multiple ImageURIs", func(t *testing.T) {
 		uris := []ImageURI{

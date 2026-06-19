@@ -3,6 +3,7 @@ package generator
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -81,13 +82,36 @@ func (g *GeminiGenerator) resolveReferenceImage(ctx context.Context, uri ports.I
 
 	img, err := g.core.PrepareReferenceImage(ctx, rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare reference image for %q: %w", rawURL, err)
+		return nil, fmt.Errorf("failed to prepare reference image for %q: %w", maskURLForLog(rawURL), err)
 	}
 	return img, nil
 }
 
-func hasImageURI(uri ports.ImageURI) bool {
-	return uri.ReferenceURL != "" || uri.FileAPIURI != ""
+func maskURLForLog(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return trimURLSecrets(rawURL)
+	}
+	u.RawQuery = ""
+	u.ForceQuery = false
+	u.Fragment = ""
+	if u.User != nil {
+		username := u.User.Username()
+		if _, hasPassword := u.User.Password(); hasPassword {
+			u.User = url.UserPassword(username, "xxxxx")
+		}
+	}
+	return u.String()
+}
+
+func trimURLSecrets(rawURL string) string {
+	if before, _, found := strings.Cut(rawURL, "?"); found {
+		rawURL = before
+	}
+	if before, _, found := strings.Cut(rawURL, "#"); found {
+		rawURL = before
+	}
+	return rawURL
 }
 
 // buildFileDataPart はファイルデータパーツを生成します。

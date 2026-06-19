@@ -6,6 +6,11 @@ type ImageURI struct {
 	FileAPIURI   string // Gemini File API 上の URI (https://...)
 }
 
+// IsEmpty は画像参照先が設定されていないかを返します。
+func (uri ImageURI) IsEmpty() bool {
+	return uri.ReferenceURL == "" && uri.FileAPIURI == ""
+}
+
 // GenerationOptions は画像生成時の共通設定パラメータを保持します。
 type GenerationOptions struct {
 	Model          string

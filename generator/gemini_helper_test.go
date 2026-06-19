@@ -131,3 +131,40 @@ func TestCollectImageParts(t *testing.T) {
 		})
 	}
 }
+
+func TestMaskURLForLog(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "removes query parameters",
+			raw:  "https://example.com/image.png?X-Goog-Signature=secret&token=abc",
+			want: "https://example.com/image.png",
+		},
+		{
+			name: "removes fragment",
+			raw:  "https://example.com/image.png#access_token=secret",
+			want: "https://example.com/image.png",
+		},
+		{
+			name: "masks URL password",
+			raw:  "https://user:secret@example.com/image.png?token=abc",
+			want: "https://user:xxxxx@example.com/image.png",
+		},
+		{
+			name: "keeps plain GCS URI",
+			raw:  "gs://bucket/image.png",
+			want: "gs://bucket/image.png",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := maskURLForLog(tt.raw); got != tt.want {
+				t.Fatalf("maskURLForLog() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

@@ -70,7 +70,7 @@ func (g *GeminiGenerator) EditImage(ctx context.Context, req ports.EditImageRequ
 		genai.NewRawReferenceImage(source, 1),
 	}
 
-	if hasImageURI(req.Mask) {
+	if !req.Mask.IsEmpty() {
 		mask, err := g.resolveReferenceImage(ctx, req.Mask)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare mask image: %w", err)
@@ -97,7 +97,7 @@ func toInt32Seed(seed *int64) (*int32, error) {
 		return nil, nil
 	}
 	if *seed < math.MinInt32 || *seed > math.MaxInt32 {
-		return nil, fmt.Errorf("seed must be within int32 range")
+		return nil, fmt.Errorf("seed %d must be within int32 range", *seed)
 	}
 	v := int32(*seed)
 	return &v, nil
