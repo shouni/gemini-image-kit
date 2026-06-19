@@ -14,16 +14,19 @@
 
 単なる API ラッパーではなく、「**GCS/外部URLからの参照画像自動取得**」「**Gemini File API とキャッシュの一貫性管理**」「**注入可能な Downloader による取得ポリシー制御**」「**インメモリ画像圧縮**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されています。
 
-`SingleImageRequest` による単一参照画像からの生成と、`ImageFusionRequest` による複数参照画像を統合した1枚の画像生成をサポートします。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。
+`SingleImageRequest` による単一参照画像からの生成、`ImageFusionRequest` による複数参照画像を統合した1枚の画像生成、`EditImageRequest` による入力画像・マスク・編集プロンプトを使った画像編集をサポートします。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。
 
 ---
 
 ## ✨ 主な特徴 (Features)
 
 * **🖼️ Unified Generator**:
-  * `GenerateSingleImage` と `GenerateFusedImage` により、単一参照画像の生成と複数参照画像の統合生成を一貫して管理。
+  * `GenerateSingleImage`、`GenerateFusedImage`、`EditImage` により、単一参照画像の生成、複数参照画像の統合生成、画像編集を一貫して管理。
 * **🧩 Image Fusion Workflow**:
   * 複数の参照画像を Gemini の入力パーツとして収集し、プロンプトと組み合わせて1枚の画像を生成。
+* **🖌️ Image Edit Workflow**:
+  * 入力画像、任意のマスク、編集プロンプト、対象 bbox、seed、model を `EditImageRequest` に集約。
+  * Vertex AI では `gs://` の入力画像・マスクを `genai.ReferenceImage` として直接参照し、外部 URL は既存の Downloader 経由で取得。
 * **🔗 Hybrid Asset Workflow**:
   * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
   * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。
@@ -47,6 +50,9 @@ GenerateSingleImage(ctx, ports.SingleImageRequest)
 
 // 複数の参照画像を統合して1枚の画像を生成
 GenerateFusedImage(ctx, ports.ImageFusionRequest)
+
+// 入力画像と任意のマスクを使って画像を編集
+EditImage(ctx, ports.EditImageRequest)
 ```
 
 ---
@@ -232,6 +238,41 @@ resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
     },
 })
 ```
+
+### 4. Vertex AI で入力画像とマスクを使って編集する
+
+`EditImage` は Vertex AI の画像編集 API を利用します。Google AI backend では `go-gemini-client` 側から `ErrUnsupportedBackend` が返ります。
+
+```go
+seed := int64(123)
+
+resp, err := g.EditImage(ctx, ports.EditImageRequest{
+    Model:      "imagen-3.0-capability-001",
+    EditPrompt: "対象領域のバッグを黒いレザーバッグに差し替えてください。",
+    Image: ports.ImageURI{
+       ReferenceURL: "gs://your-bucket/edit/source.png",
+    },
+    Mask: ports.ImageURI{
+       ReferenceURL: "gs://your-bucket/edit/mask.png",
+    },
+    TargetBBox: &ports.BoundingBox{
+       X:      120,
+       Y:      80,
+       Width:  320,
+       Height: 240,
+    },
+    Seed: &seed,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
+    log.Fatal(err)
+}
+```
+
+`TargetBBox` は SDK の編集 config に専用フィールドがないため、編集プロンプトへ追記してモデルに渡します。マスクを指定した場合は `MASK_MODE_USER_PROVIDED` の `MaskReferenceImage` として送信します。
 
 ---
 

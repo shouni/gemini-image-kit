@@ -70,6 +70,26 @@ func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageU
 	return part, nil
 }
 
+func (g *GeminiGenerator) resolveReferenceImage(ctx context.Context, uri ports.ImageURI) (*genai.Image, error) {
+	rawURL := uri.ReferenceURL
+	if rawURL == "" && IsGCSURI(uri.FileAPIURI) {
+		rawURL = uri.FileAPIURI
+	}
+	if rawURL == "" {
+		return nil, fmt.Errorf("reference URL is required")
+	}
+
+	img, err := g.core.PrepareReferenceImage(ctx, rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare reference image for %q: %w", rawURL, err)
+	}
+	return img, nil
+}
+
+func hasImageURI(uri ports.ImageURI) bool {
+	return uri.ReferenceURL != "" || uri.FileAPIURI != ""
+}
+
 // buildFileDataPart はファイルデータパーツを生成します。
 func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
 	return &genai.Part{
@@ -133,4 +153,20 @@ func buildFinalPrompt(prompt, negative string) string {
 	sb.WriteString(negativePromptSeparator)
 	sb.WriteString(n)
 	return sb.String()
+}
+
+func buildEditPrompt(prompt string, bbox *ports.BoundingBox) string {
+	p := strings.TrimSpace(prompt)
+	if bbox == nil || p == "" {
+		return p
+	}
+
+	return fmt.Sprintf(
+		"%s\n\nTarget bounding box: x=%g, y=%g, width=%g, height=%g.",
+		p,
+		bbox.X,
+		bbox.Y,
+		bbox.Width,
+		bbox.Height,
+	)
 }
