@@ -1,3 +1,5 @@
+// Package ports は、gemini-image-kit の各コンポーネントが依存する
+// インターフェース（ポート）と、画像生成・編集に関する共通データ型を定義します。
 package ports
 
 // ImageURI は画像の参照先情報を保持します。

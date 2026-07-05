@@ -29,7 +29,7 @@ func TestSingleImageRequest_Fields(t *testing.T) {
 		}
 
 		if req.ImageSize != size {
-			t.Errorf("ImageSize is incorrect. want: %s, got: %s", size, req.GenerationOptions.ImageSize)
+			t.Errorf("ImageSize is incorrect. want: %s, got: %s", size, req.ImageSize)
 		}
 	})
 }
