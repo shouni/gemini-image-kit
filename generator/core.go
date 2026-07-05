@@ -1,3 +1,5 @@
+// Package generator は、Gemini API を用いた画像生成・編集の実行と、
+// File API へのアップロード・キャッシュ管理を行う基盤ロジックを提供します。
 package generator
 
 import (
@@ -16,6 +18,7 @@ import (
 )
 
 const (
+	// ImageCompressionQuality は、画像圧縮時に使用するJPEG品質値です。
 	ImageCompressionQuality = 75
 	cacheKeyFileAPIURI      = "fileapi_uri:"
 	cacheKeyFileAPIName     = "fileapi_name:"

@@ -124,7 +124,7 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 		cache.Clear()
 		err := core.DeleteFile(ctx, rawID)
 
-		//assert.Error ではなく require.Error を使用し、nil パニックを防ぐ
+		// assert.Error ではなく require.Error を使用し、nil パニックを防ぐ
 		require.Error(t, err, "expected error when cache is missing")
 
 		// エラーメッセージの検証

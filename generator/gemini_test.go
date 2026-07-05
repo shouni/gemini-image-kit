@@ -31,7 +31,7 @@ func TestGeminiGenerator_GenerateSingleImage_Structure(t *testing.T) {
 		}
 
 		if req.ImageSize != "2K" {
-			t.Errorf("ImageSize should be 2K, got %s", req.GenerationOptions.ImageSize)
+			t.Errorf("ImageSize should be 2K, got %s", req.ImageSize)
 		}
 	})
 }

@@ -37,7 +37,7 @@ func (m *mockAIClient) IsVertexAI() bool {
 	return m.backend == genai.BackendVertexAI
 }
 
-func (m *mockAIClient) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error) {
+func (m *mockAIClient) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (string, string, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return "", "", err
@@ -49,17 +49,17 @@ func (m *mockAIClient) UploadFile(ctx context.Context, r io.Reader, mimeType, di
 	return MockFileUploadURI, MockFileUploadName, nil
 }
 
-func (m *mockAIClient) DeleteFile(ctx context.Context, name string) error {
+func (m *mockAIClient) DeleteFile(_ context.Context, name string) error {
 	m.deleteCalled = true
 	m.lastFileName = name
 	return nil
 }
 
-func (m *mockAIClient) GenerateContent(ctx context.Context, model string, prompt string) (*gemini.Response, error) {
+func (m *mockAIClient) GenerateContent(_ context.Context, _ string, _ string) (*gemini.Response, error) {
 	return nil, nil
 }
 
-func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
+func (m *mockAIClient) GenerateWithParts(_ context.Context, _ string, _ []*genai.Part, _ gemini.GenerateOptions) (*gemini.Response, error) {
 	m.generateCalled = true
 	return &gemini.Response{
 		RawResponse: &genai.GenerateContentResponse{
@@ -75,7 +75,7 @@ func (m *mockAIClient) GenerateWithParts(ctx context.Context, model string, part
 	}, nil
 }
 
-func (m *mockAIClient) EditImage(ctx context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
+func (m *mockAIClient) EditImage(_ context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
 	m.editCalled = true
 	m.lastEditModel = model
 	m.lastEditPrompt = prompt
@@ -88,7 +88,7 @@ func (m *mockAIClient) EditImage(ctx context.Context, model string, prompt strin
 	}, nil
 }
 
-func (m *mockAIClient) GetFile(ctx context.Context, name string) (*genai.File, error) {
+func (m *mockAIClient) GetFile(_ context.Context, name string) (*genai.File, error) {
 	return &genai.File{Name: name, State: genai.FileStateActive}, nil
 }
 
@@ -99,7 +99,7 @@ type mockReader struct {
 	err  error
 }
 
-func (m *mockReader) Open(ctx context.Context, uri string) (io.ReadCloser, error) {
+func (m *mockReader) Open(_ context.Context, _ string) (io.ReadCloser, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -110,7 +110,7 @@ func (m *mockReader) Open(ctx context.Context, uri string) (io.ReadCloser, error
 	return io.NopCloser(bytes.NewReader(d)), nil
 }
 
-func (m *mockReader) List(ctx context.Context, uri string, fn func(string) error) error {
+func (m *mockReader) List(_ context.Context, _ string, _ func(string) error) error {
 	return nil
 }
 
@@ -122,7 +122,7 @@ type mockHTTPClient struct {
 }
 
 // GetStream の実装
-func (m *mockHTTPClient) GetStream(ctx context.Context, url string) (io.ReadCloser, error) {
+func (m *mockHTTPClient) GetStream(_ context.Context, _ string) (io.ReadCloser, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -148,7 +148,7 @@ func (m *mockCache) Get(key string) (any, bool) {
 	return val, ok
 }
 
-func (m *mockCache) Set(key string, value any, d time.Duration) {
+func (m *mockCache) Set(key string, value any, _ time.Duration) {
 	if m.data == nil {
 		m.data = make(map[string]any)
 	}

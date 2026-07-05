@@ -1,11 +1,13 @@
+// Package imgutil は、画像フォーマットの判定・検出、JPEG圧縮など、
+// バイナリレベルでの画像処理ユーティリティを提供します。
 package imgutil
 
 import (
 	"bytes"
 	"image"
-	_ "image/gif"
+	_ "image/gif" // image.Decode に GIF デコーダーを登録するため
 	"image/jpeg"
-	_ "image/png"
+	_ "image/png" // image.Decode に PNG デコーダーを登録するため
 	"io"
 )
 
