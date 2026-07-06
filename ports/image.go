@@ -24,15 +24,6 @@ type GenerationOptions struct {
 	Seed           *int64
 }
 
-// BoundingBox は編集対象領域を表す矩形です。
-// 座標系は呼び出し側の画像処理パイプラインに合わせ、編集プロンプトへ明示的に渡されます。
-type BoundingBox struct {
-	X      float64
-	Y      float64
-	Width  float64
-	Height float64
-}
-
 // SingleImageRequest は単一の参照画像を使う画像生成要求です。
 type SingleImageRequest struct {
 	GenerationOptions
@@ -43,16 +34,6 @@ type SingleImageRequest struct {
 type ImageFusionRequest struct {
 	GenerationOptions
 	Images []ImageURI
-}
-
-// EditImageRequest は入力画像と任意のマスクを使う画像編集要求です。
-type EditImageRequest struct {
-	Model      string
-	Image      ImageURI
-	Mask       ImageURI
-	EditPrompt string
-	TargetBBox *BoundingBox
-	Seed       *int64
 }
 
 // ImageResponse は生成された画像データとそのメタデータです。

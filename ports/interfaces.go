@@ -20,8 +20,6 @@ type ImageGenerator interface {
 	GenerateSingleImage(ctx context.Context, req SingleImageRequest) (*ImageResponse, error)
 	// GenerateFusedImage は、複数の参照画像と構成パラメータに基づいて1枚の画像を生成します。
 	GenerateFusedImage(ctx context.Context, req ImageFusionRequest) (*ImageResponse, error)
-	// EditImage は、入力画像と任意のマスクに基づいて画像を編集します。
-	EditImage(ctx context.Context, req EditImageRequest) (*ImageResponse, error)
 	Backend
 }
 
@@ -37,12 +35,8 @@ type AssetManager interface {
 type ImageExecutor interface {
 	// ExecuteRequest は、指定されたパラメータで画像生成リクエストを実行し、結果を返します。
 	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*ImageResponse, error)
-	// ExecuteEditRequest は、指定されたパラメータで画像編集リクエストを実行し、結果を返します。
-	ExecuteEditRequest(ctx context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig, seed int64) (*ImageResponse, error)
 	// PrepareImagePart は、指定された画像URLから後続処理で利用する画像パーツを作成します。
 	PrepareImagePart(ctx context.Context, rawURL string) (*genai.Part, error)
-	// PrepareReferenceImage は、指定された画像URLから編集APIで利用する参照画像を作成します。
-	PrepareReferenceImage(ctx context.Context, rawURL string) (*genai.Image, error)
 	Backend
 }
 

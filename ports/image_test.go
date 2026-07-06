@@ -74,38 +74,3 @@ func TestImageFusionRequest_Fields(t *testing.T) {
 		}
 	})
 }
-
-func TestEditImageRequest_Fields(t *testing.T) {
-	t.Run("should correctly store edit image fields", func(t *testing.T) {
-		seed := int64(123)
-		bbox := &BoundingBox{X: 10, Y: 20, Width: 100, Height: 80}
-
-		req := EditImageRequest{
-			Model:      "imagen-edit",
-			EditPrompt: "replace the object",
-			Image:      ImageURI{ReferenceURL: "gs://bucket/source.png"},
-			Mask:       ImageURI{ReferenceURL: "gs://bucket/mask.png"},
-			TargetBBox: bbox,
-			Seed:       &seed,
-		}
-
-		if req.Model != "imagen-edit" {
-			t.Errorf("Model is incorrect. want: imagen-edit, got: %s", req.Model)
-		}
-		if req.Image.ReferenceURL != "gs://bucket/source.png" {
-			t.Errorf("Image ReferenceURL is incorrect. got: %s", req.Image.ReferenceURL)
-		}
-		if req.Mask.ReferenceURL != "gs://bucket/mask.png" {
-			t.Errorf("Mask ReferenceURL is incorrect. got: %s", req.Mask.ReferenceURL)
-		}
-		if req.EditPrompt != "replace the object" {
-			t.Errorf("EditPrompt is incorrect. got: %s", req.EditPrompt)
-		}
-		if req.TargetBBox != bbox {
-			t.Fatal("TargetBBox should be stored as provided")
-		}
-		if req.Seed == nil || *req.Seed != seed {
-			t.Fatalf("Seed is incorrect. got: %v", req.Seed)
-		}
-	})
-}
