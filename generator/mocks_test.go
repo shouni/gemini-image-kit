@@ -21,14 +21,9 @@ type mockAIClient struct {
 	uploadCalled       bool
 	deleteCalled       bool
 	generateCalled     bool
-	editCalled         bool
 	lastFileName       string
 	lastUploadMIMEType string
 	lastUploadData     []byte
-	lastEditModel      string
-	lastEditPrompt     string
-	lastEditRefs       []genai.ReferenceImage
-	lastEditConfig     *genai.EditImageConfig
 	backend            genai.Backend
 }
 
@@ -71,19 +66,6 @@ func (m *mockAIClient) GenerateWithParts(_ context.Context, _ string, _ []*genai
 					},
 				},
 			}},
-		},
-	}, nil
-}
-
-func (m *mockAIClient) EditImage(_ context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
-	m.editCalled = true
-	m.lastEditModel = model
-	m.lastEditPrompt = prompt
-	m.lastEditRefs = referenceImages
-	m.lastEditConfig = config
-	return &genai.EditImageResponse{
-		GeneratedImages: []*genai.GeneratedImage{
-			{Image: &genai.Image{MIMEType: "image/png", ImageBytes: []byte("fake-edited-image-bytes")}},
 		},
 	}, nil
 }

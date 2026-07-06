@@ -3,7 +3,6 @@ package generator
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -71,49 +70,6 @@ func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageU
 	return part, nil
 }
 
-func (g *GeminiGenerator) resolveReferenceImage(ctx context.Context, uri ports.ImageURI) (*genai.Image, error) {
-	rawURL := uri.ReferenceURL
-	if rawURL == "" && IsGCSURI(uri.FileAPIURI) {
-		rawURL = uri.FileAPIURI
-	}
-	if rawURL == "" {
-		return nil, fmt.Errorf("reference URL is required")
-	}
-
-	img, err := g.core.PrepareReferenceImage(ctx, rawURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare reference image for %q: %w", maskURLForLog(rawURL), err)
-	}
-	return img, nil
-}
-
-func maskURLForLog(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return trimURLSecrets(rawURL)
-	}
-	u.RawQuery = ""
-	u.ForceQuery = false
-	u.Fragment = ""
-	if u.User != nil {
-		username := u.User.Username()
-		if _, hasPassword := u.User.Password(); hasPassword {
-			u.User = url.UserPassword(username, "xxxxx")
-		}
-	}
-	return u.String()
-}
-
-func trimURLSecrets(rawURL string) string {
-	if before, _, found := strings.Cut(rawURL, "?"); found {
-		rawURL = before
-	}
-	if before, _, found := strings.Cut(rawURL, "#"); found {
-		rawURL = before
-	}
-	return rawURL
-}
-
 // buildFileDataPart はファイルデータパーツを生成します。
 func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
 	return &genai.Part{
@@ -177,20 +133,4 @@ func buildFinalPrompt(prompt, negative string) string {
 	sb.WriteString(negativePromptSeparator)
 	sb.WriteString(n)
 	return sb.String()
-}
-
-func buildEditPrompt(prompt string, bbox *ports.BoundingBox) string {
-	p := strings.TrimSpace(prompt)
-	if bbox == nil || p == "" {
-		return p
-	}
-
-	return fmt.Sprintf(
-		"%s\n\nTarget bounding box: x=%g, y=%g, width=%g, height=%g.",
-		p,
-		bbox.X,
-		bbox.Y,
-		bbox.Width,
-		bbox.Height,
-	)
 }
