@@ -3,9 +3,9 @@ module github.com/shouni/gemini-image-kit
 go 1.26
 
 require (
-	github.com/shouni/go-gemini-client v1.9.0
+	github.com/shouni/go-gemini-client v1.9.1
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/genai v1.62.0
+	google.golang.org/genai v1.63.0
 )
 
 require (
