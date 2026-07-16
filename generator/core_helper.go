@@ -95,7 +95,7 @@ func detectUploadSource(br *bufio.Reader) (string, error) {
 
 	detectedMime := imgutil.DetectMIMEType(head)
 	if !imgutil.IsImageMIMEType(detectedMime) {
-		return "", fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+		return "", fmt.Errorf("%w (コンテンツ判定: %s)", ErrUnsupportedFileFormat, detectedMime)
 	}
 	return detectedMime, nil
 }

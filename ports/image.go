@@ -2,6 +2,8 @@
 // インターフェース（ポート）と、画像生成・編集に関する共通データ型を定義します。
 package ports
 
+import "github.com/shouni/go-gemini-client/gemini"
+
 // ImageURI は画像の参照先情報を保持します。
 type ImageURI struct {
 	ReferenceURL string // 元の参照先 (GCS, HTTP等)
@@ -22,6 +24,10 @@ type GenerationOptions struct {
 	AspectRatio    string
 	ImageSize      string
 	Seed           *int64
+	// PersonGeneration は人物生成の許可ポリシーです。
+	// Vertex AI バックエンドでのみ適用され、未指定時は PersonGenerationAllowAll になります。
+	// Gemini API バックエンドではこのフィールドを設定すると API エラーになるため、常に無視されます。
+	PersonGeneration gemini.PersonGeneration
 }
 
 // SingleImageRequest は単一の参照画像を使う画像生成要求です。

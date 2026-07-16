@@ -127,7 +127,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (
 
 	mimeType := imgutil.DetectMIMEType(rawData)
 	if !imgutil.IsImageMIMEType(mimeType) {
-		return nil, fmt.Errorf("unsupported file format: %s", mimeType)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedFileFormat, mimeType)
 	}
 
 	finalData := rawData
@@ -158,12 +158,12 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 // ブロック時は GenerateWithParts 自体がエラーを返すため、ここでは行いません。
 func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
 	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
-		return nil, fmt.Errorf("invalid or empty response from Gemini")
+		return nil, ErrEmptyResponse
 	}
 
 	candidate := resp.RawResponse.Candidates[0]
 	if candidate.Content == nil {
-		return nil, fmt.Errorf("no content found in candidate")
+		return nil, fmt.Errorf("%w: no content in candidate", ErrNoImageData)
 	}
 
 	for _, part := range candidate.Content.Parts {
@@ -176,5 +176,5 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*p
 		}
 	}
 
-	return nil, fmt.Errorf("no image data found in response parts")
+	return nil, fmt.Errorf("%w: parts contain no inline image", ErrNoImageData)
 }

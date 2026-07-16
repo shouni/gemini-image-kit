@@ -168,6 +168,12 @@ func (c *memoryCache) Set(key string, value any, ttl time.Duration) {
     defer c.mu.Unlock()
     c.data[key] = value
 }
+
+func (c *memoryCache) Delete(key string) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    delete(c.data, key)
+}
 ```
 
 > 外部 URL を受け取る場合は、`ports.Downloader` 側で許可ドメイン、IP レンジ、タイムアウト、最大サイズなどを制御してください。`http.DefaultClient` は最小例です。
@@ -233,6 +239,8 @@ resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
 })
 ```
 
+> Vertex AI では人物生成ポリシーを `GenerationOptions.PersonGeneration` で制御できます（`gemini.PersonGenerationAllowAll` / `AllowAdult` / `DontAllow`）。未指定時は `AllowAll` です。Gemini API バックエンドではこのフィールドは API の制約により常に無視されます。
+
 ### 4. 既存画像を編集する（Nano Banana系モデルによる会話型編集）
 
 このライブラリに画像編集専用の API はありませんが、既存画像を `SingleImageRequest.Image` に、編集指示を `Prompt` に渡して `GenerateSingleImage` を呼ぶことで、Gemini の会話型マルチモーダル画像モデル（`gemini-2.5-flash-image` など）による編集が行えます。
@@ -257,6 +265,19 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 ```
 
 > Vertex AI Imagen のマスクベース編集 API（`imagen-3.0-capability-001` 等）は2026年6月30日に廃止され、後継の「capability」モデルも用意されていません。マスクで領域を明示した編集が必要な場合は、この会話型編集では対応できない点に注意してください。
+
+---
+
+## 📜 エラーハンドリング
+
+`generator` パッケージは以下のセンチネルエラーをエクスポートしています。`errors.Is` で判定できます。
+
+- `ErrModelRequired`: 生成リクエストにモデル名が指定されていない場合。
+- `ErrEmptyPrompt`: プロンプト（ネガティブプロンプト含む）が空の場合。
+- `ErrUnsupportedFileFormat`: 取得したデータが画像として扱えない場合。
+- `ErrFileNotInCache`: File API のファイル名がキャッシュから引けず削除できない場合。
+- `ErrEmptyResponse`: Gemini からのレスポンスが空または不正な場合。
+- `ErrNoImageData`: レスポンスに画像データが含まれていない場合。
 
 ---
 

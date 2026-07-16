@@ -15,11 +15,11 @@ import (
 // generate は画像生成のコアロジックです。
 func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOptions, uris []ports.ImageURI) (*ports.ImageResponse, error) {
 	if req.Model == "" {
-		return nil, fmt.Errorf("model is required")
+		return nil, ErrModelRequired
 	}
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
-		return nil, fmt.Errorf("prompt cannot be empty")
+		return nil, ErrEmptyPrompt
 	}
 
 	// 1. 画像アセット（素材）を収集
@@ -32,7 +32,7 @@ func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOpti
 	parts = append(parts, &genai.Part{Text: finalPrompt})
 
 	// 3. ImageSize を含めたオプション構築
-	opts := g.toOptions(req.AspectRatio, req.ImageSize, req.SystemPrompt, req.Seed)
+	opts := g.toOptions(req)
 	return g.core.ExecuteRequest(ctx, req.Model, parts, opts)
 }
 
@@ -81,13 +81,13 @@ func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
 }
 
 // toOptions は Gemini へのリクエストオプションを構築します。
-func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.GenerateOptions {
+func (g *GeminiGenerator) toOptions(req ports.GenerationOptions) gemini.GenerateOptions {
 	isVertex := g.core.IsVertexAI()
 	opts := gemini.GenerateOptions{
-		AspectRatio:    ar,
-		ImageSize:      size,
-		SystemPrompt:   sp,
-		Seed:           seed,
+		AspectRatio:    req.AspectRatio,
+		ImageSize:      req.ImageSize,
+		SystemPrompt:   req.SystemPrompt,
+		Seed:           req.Seed,
 		SafetySettings: g.buildSafetySettings(isVertex),
 	}
 
@@ -95,6 +95,9 @@ func (g *GeminiGenerator) toOptions(ar, size, sp string, seed *int64) gemini.Gen
 	// Gemini API (Google AI) ではこのフィールドが含まれると致命的エラーになるため
 	if isVertex {
 		opts.PersonGeneration = gemini.PersonGenerationAllowAll
+		if req.PersonGeneration != gemini.PersonGenerationUnspecified {
+			opts.PersonGeneration = req.PersonGeneration
+		}
 	}
 
 	return opts
