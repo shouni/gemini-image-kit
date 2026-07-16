@@ -96,6 +96,14 @@ func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
 	}
 }
 
+// removeFromCache は、指定されたソース URI に紐づくキャッシュエントリを削除します。
+func (c *GeminiImageCore) removeFromCache(fileURI string) {
+	if c.cache != nil {
+		c.cache.Delete(cacheKeyFileAPIURI + fileURI)
+		c.cache.Delete(cacheKeyFileAPIName + fileURI)
+	}
+}
+
 // detectUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証し、MIMETypeを返します。
 func detectUploadSource(br *bufio.Reader) (string, error) {
 	head, err := br.Peek(512)

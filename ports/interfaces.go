@@ -46,4 +46,6 @@ type ImageCacher interface {
 	Get(key string) (any, bool)
 	// Set は、指定されたキーと値、有効期限でアイテムを保存します。
 	Set(key string, value any, d time.Duration)
+	// Delete は、指定されたキーに紐づくアイテムを削除します。存在しないキーは無視します。
+	Delete(key string)
 }
