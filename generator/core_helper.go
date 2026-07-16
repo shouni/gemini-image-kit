@@ -2,16 +2,12 @@ package generator
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
-	"image"
-	"image/jpeg"
 	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
-
-	"google.golang.org/genai"
 
 	"github.com/shouni/gemini-image-kit/imgutil"
 )
@@ -28,35 +24,18 @@ func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) (io
 	return c.httpClient.GetStream(ctx, rawURL)
 }
 
-// toPart は、与えられたデータが有効な画像MIMEタイプを持つ場合に genai.Part オブジェクトへ変換します。
-func (c *GeminiImageCore) toPart(data []byte) *genai.Part {
-	mimeType := http.DetectContentType(data)
-	if !strings.HasPrefix(mimeType, "image/") {
-		return nil
-	}
-	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: data}}
-}
-
 // uploadStream はストリームをそのままアップロードします。
 func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
 	return c.aiClient.UploadFile(ctx, r, mimeType, filepath.Base(fileURI))
 }
 
-// uploadCompressed は画像を圧縮してからアップロードします。
+// uploadCompressed は画像をJPEGに圧縮してからアップロードします。
 func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, fileURI string) (string, string, error) {
-	img, _, err := image.Decode(r)
+	compressed, err := imgutil.CompressToJPEG(r, ImageCompressionQuality)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to decode image for compression: %w", err)
+		return "", "", fmt.Errorf("failed to compress image for upload: %w", err)
 	}
-
-	pr, pw := io.Pipe()
-	go func() {
-		err := jpeg.Encode(pw, img, &jpeg.Options{Quality: ImageCompressionQuality})
-		pw.CloseWithError(err)
-	}()
-
-	defer func() { _ = pr.Close() }()
-	return c.aiClient.UploadFile(ctx, pr, "image/jpeg", filepath.Base(fileURI))
+	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), "image/jpeg", filepath.Base(fileURI))
 }
 
 // uploadByStrategy は、画像の圧縮設定に基づいてアップロードを実行します。
@@ -96,6 +75,14 @@ func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
 	}
 }
 
+// removeFromCache は、指定されたソース URI に紐づくキャッシュエントリを削除します。
+func (c *GeminiImageCore) removeFromCache(fileURI string) {
+	if c.cache != nil {
+		c.cache.Delete(cacheKeyFileAPIURI + fileURI)
+		c.cache.Delete(cacheKeyFileAPIName + fileURI)
+	}
+}
+
 // detectUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証し、MIMETypeを返します。
 func detectUploadSource(br *bufio.Reader) (string, error) {
 	head, err := br.Peek(512)
@@ -108,7 +95,7 @@ func detectUploadSource(br *bufio.Reader) (string, error) {
 
 	detectedMime := imgutil.DetectMIMEType(head)
 	if !imgutil.IsImageMIMEType(detectedMime) {
-		return "", fmt.Errorf("サポートされていないファイル形式です (コンテンツ判定: %s)", detectedMime)
+		return "", fmt.Errorf("%w (コンテンツ判定: %s)", ErrUnsupportedFileFormat, detectedMime)
 	}
 	return detectedMime, nil
 }

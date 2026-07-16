@@ -136,3 +136,7 @@ func (m *mockCache) Set(key string, value any, _ time.Duration) {
 	}
 	m.data[key] = value
 }
+
+func (m *mockCache) Delete(key string) {
+	delete(m.data, key)
+}

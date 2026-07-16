@@ -118,7 +118,21 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 		assert.Equal(t, apiName, ai.lastFileName)
 	})
 
-	t.Run("キャッシュがない場合はエラーを返す", func(t *testing.T) {
+	t.Run("削除に成功したらキャッシュも無効化される", func(t *testing.T) {
+		fileURL := "https://example.com/invalidate.png"
+		cache.Set(cacheKeyFileAPIURI+fileURL, "https://example.com/files/dead", time.Hour)
+		cache.Set(cacheKeyFileAPIName+fileURL, "files/dead-id", time.Hour)
+
+		err := core.DeleteFile(ctx, fileURL)
+
+		require.NoError(t, err)
+		_, ok := cache.Get(cacheKeyFileAPIURI + fileURL)
+		assert.False(t, ok, "URI cache entry should be invalidated after deletion")
+		_, ok = cache.Get(cacheKeyFileAPIName + fileURL)
+		assert.False(t, ok, "name cache entry should be invalidated after deletion")
+	})
+
+	t.Run("キャッシュがない場合はErrFileNotInCacheを返す", func(t *testing.T) {
 		rawID := "files/raw-id"
 		// キャッシュをクリアした状態で実行
 		cache.Clear()
@@ -126,10 +140,7 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 
 		// assert.Error ではなく require.Error を使用し、nil パニックを防ぐ
 		require.Error(t, err, "expected error when cache is missing")
-
-		// エラーメッセージの検証
-		expectedErrMsg := "cannot determine file name for deletion"
-		assert.Contains(t, err.Error(), expectedErrMsg)
+		assert.ErrorIs(t, err, ErrFileNotInCache)
 	})
 }
 

@@ -39,8 +39,8 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/shouni/go-gemini-client v1.9.1 h1:tikD52X3XAKM+YHEUpp6oQ9Tr3+C/WCdt+XFuEQXXiI=
-github.com/shouni/go-gemini-client v1.9.1/go.mod h1:+rbWQ6xgfXGCh48ScOzaF3nGsxhGY0sRgvK/VkxqLMs=
+github.com/shouni/go-gemini-client v1.10.0 h1:PYsNtF9dzaudAw7OAYrVpBGaxxOgU3rTDAFgTtv3A0w=
+github.com/shouni/go-gemini-client v1.10.0/go.mod h1:NjqBFYtxGoferSKQOVruNRf/WM0GNX9sNPSkIOxoRMQ=
 github.com/shouni/netarmor v1.1.0 h1:PNgmnY7sFvIBKtE8TqjO2IUguwyNISRt4x13fhhIm4w=
 github.com/shouni/netarmor v1.1.0/go.mod h1:SOrb359QPM599FUJQ2GsRcUFOvJTaQ+L98Wo9Vr7xMk=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=

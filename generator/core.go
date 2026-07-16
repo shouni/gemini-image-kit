@@ -95,11 +95,17 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 }
 
 // DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
+// 削除に成功した場合は、同じソース URI での再利用を防ぐためキャッシュも無効化します。
 func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
-	if name, ok := c.cacheGetString(cacheKeyFileAPIName + fileURI); ok {
-		return c.aiClient.DeleteFile(ctx, name)
+	name, ok := c.cacheGetString(cacheKeyFileAPIName + fileURI)
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrFileNotInCache, fileURI)
 	}
-	return fmt.Errorf("cannot determine file name for deletion, file not found in cache: %s", fileURI)
+	if err := c.aiClient.DeleteFile(ctx, name); err != nil {
+		return err
+	}
+	c.removeFromCache(fileURI)
+	return nil
 }
 
 // PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
@@ -119,24 +125,22 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (
 		return nil, fmt.Errorf("failed to read image data: %w", err)
 	}
 
-	finalData := rawData
 	mimeType := imgutil.DetectMIMEType(rawData)
 	if !imgutil.IsImageMIMEType(mimeType) {
-		return nil, fmt.Errorf("unsupported file format: %s", mimeType)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedFileFormat, mimeType)
 	}
+
+	finalData := rawData
 	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
 		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compress image: %w", err)
 		}
 		finalData = compressed
+		mimeType = "image/jpeg"
 	}
 
-	part := c.toPart(finalData)
-	if part == nil {
-		return nil, fmt.Errorf("unsupported file format: %s", imgutil.DetectMIMEType(finalData))
-	}
-	return part, nil
+	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: finalData}}, nil
 }
 
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
@@ -149,20 +153,17 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 	return c.ParseToResponse(resp, ports.DereferenceSeed(opts.Seed))
 }
 
-// ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
+// ParseToResponse は Gemini からのレスポンスから画像データを抽出します。
+// FinishReason の検証（安全フィルターによるブロック等）は下層の go-gemini-client が行い、
+// ブロック時は GenerateWithParts 自体がエラーを返すため、ここでは行いません。
 func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
 	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
-		return nil, fmt.Errorf("invalid or empty response from Gemini")
+		return nil, ErrEmptyResponse
 	}
 
 	candidate := resp.RawResponse.Candidates[0]
-
-	if candidate.FinishReason != genai.FinishReasonStop && candidate.FinishReason != genai.FinishReasonUnspecified {
-		return nil, fmt.Errorf("generation failed with FinishReason: %s", candidate.FinishReason)
-	}
-
 	if candidate.Content == nil {
-		return nil, fmt.Errorf("no content found in candidate")
+		return nil, fmt.Errorf("%w: no content in candidate", ErrNoImageData)
 	}
 
 	for _, part := range candidate.Content.Parts {
@@ -175,5 +176,5 @@ func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*p
 		}
 	}
 
-	return nil, fmt.Errorf("no image data found in response parts")
+	return nil, fmt.Errorf("%w: parts contain no inline image", ErrNoImageData)
 }
