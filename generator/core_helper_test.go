@@ -105,7 +105,9 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("異常系: FinishReasonSafety によるブロック", func(t *testing.T) {
+	// NOTE: FinishReason の検証（安全ブロック等）は go-gemini-client 側が行うため、
+	// ParseToResponse では画像データの有無のみを検証します。
+	t.Run("異常系: Parts が空（ブロック等で画像が返らなかった場合）", func(t *testing.T) {
 		resp := &gemini.Response{
 			RawResponse: &genai.GenerateContentResponse{
 				Candidates: []*genai.Candidate{
@@ -118,10 +120,7 @@ func TestGeminiImageCore_ParseToResponse(t *testing.T) {
 		}
 		_, err := core.ParseToResponse(resp, seed)
 		if err == nil {
-			t.Error("expected error for Safety block")
-		}
-		if err != nil && !testing.Short() {
-			t.Logf("expected error message: %v", err)
+			t.Error("expected error when no image data is present")
 		}
 	})
 

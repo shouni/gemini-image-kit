@@ -125,24 +125,22 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (
 		return nil, fmt.Errorf("failed to read image data: %w", err)
 	}
 
-	finalData := rawData
 	mimeType := imgutil.DetectMIMEType(rawData)
 	if !imgutil.IsImageMIMEType(mimeType) {
 		return nil, fmt.Errorf("unsupported file format: %s", mimeType)
 	}
+
+	finalData := rawData
 	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
 		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compress image: %w", err)
 		}
 		finalData = compressed
+		mimeType = "image/jpeg"
 	}
 
-	part := c.toPart(finalData)
-	if part == nil {
-		return nil, fmt.Errorf("unsupported file format: %s", imgutil.DetectMIMEType(finalData))
-	}
-	return part, nil
+	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: finalData}}, nil
 }
 
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
@@ -155,18 +153,15 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 	return c.ParseToResponse(resp, ports.DereferenceSeed(opts.Seed))
 }
 
-// ParseToResponse は Gemini からのレスポンスを検証し、画像データを抽出します。
+// ParseToResponse は Gemini からのレスポンスから画像データを抽出します。
+// FinishReason の検証（安全フィルターによるブロック等）は下層の go-gemini-client が行い、
+// ブロック時は GenerateWithParts 自体がエラーを返すため、ここでは行いません。
 func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
 	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
 		return nil, fmt.Errorf("invalid or empty response from Gemini")
 	}
 
 	candidate := resp.RawResponse.Candidates[0]
-
-	if candidate.FinishReason != genai.FinishReasonStop && candidate.FinishReason != genai.FinishReasonUnspecified {
-		return nil, fmt.Errorf("generation failed with FinishReason: %s", candidate.FinishReason)
-	}
-
 	if candidate.Content == nil {
 		return nil, fmt.Errorf("no content found in candidate")
 	}
