@@ -41,6 +41,8 @@ github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0t
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/shouni/go-gemini-client v1.13.1 h1:d3MY91wpNcvnb6nC9tF2SiotevMSdWuobJNp+97hGzQ=
 github.com/shouni/go-gemini-client v1.13.1/go.mod h1:5WeTg3oLmo5KmelIxOj8Z/7gWcdE4FGX3nl//RRCrEM=
+github.com/shouni/go-gemini-client v1.13.3 h1:n3uw2DKrNjbfQkddN1Sg3eLU4CncPOQhOBHpcEoUmLA=
+github.com/shouni/go-gemini-client v1.13.3/go.mod h1:5WeTg3oLmo5KmelIxOj8Z/7gWcdE4FGX3nl//RRCrEM=
 github.com/shouni/netarmor v1.1.0 h1:PNgmnY7sFvIBKtE8TqjO2IUguwyNISRt4x13fhhIm4w=
 github.com/shouni/netarmor v1.1.0/go.mod h1:SOrb359QPM599FUJQ2GsRcUFOvJTaQ+L98Wo9Vr7xMk=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=

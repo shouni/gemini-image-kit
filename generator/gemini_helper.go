@@ -104,6 +104,7 @@ func (g *GeminiGenerator) toOptions(req ports.GenerationOptions) gemini.Generate
 }
 
 // buildSafetySettings は安全性設定を返します。
+// Vertex AI は HarmBlockThresholdOff を受け付けないため、バックエンドごとに閾値を切り替えます。
 func (g *GeminiGenerator) buildSafetySettings(isVertex bool) []*genai.SafetySetting {
 	threshold := genai.HarmBlockThresholdOff
 
@@ -111,12 +112,7 @@ func (g *GeminiGenerator) buildSafetySettings(isVertex bool) []*genai.SafetySett
 		threshold = genai.HarmBlockThresholdBlockNone
 	}
 
-	return []*genai.SafetySetting{
-		{Category: genai.HarmCategoryHarassment, Threshold: threshold},
-		{Category: genai.HarmCategoryHateSpeech, Threshold: threshold},
-		{Category: genai.HarmCategorySexuallyExplicit, Threshold: threshold},
-		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
-	}
+	return gemini.NewSafetySettings(threshold)
 }
 
 // buildFinalPrompt はプロンプトと否定プロンプトを結合します。
