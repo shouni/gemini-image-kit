@@ -32,7 +32,7 @@
 * **🛡️ Fetch Policy Injection**:
   * 外部 URL 取得は `ports.Downloader` 経由に限定。SSRF 対策や許可ドメイン制御は、アプリケーション側で安全な Downloader を注入して適用します。
 * **⚡️ Optimized Image Handling**:
-  * **Stream-Based Upload**: File API へのアップロードは `bufio.Reader` と `io.Pipe` を活用し、圧縮不要な場合はストリームで直接転送します。
+  * **Stream-Based Upload**: File API へのアップロードは `bufio.Reader` を活用し、圧縮不要な場合はストリームで直接転送します（圧縮が必要な場合はメモリ上で再エンコードしてからアップロードします）。
   * **Selective Optimization**: PNG/GIF など圧縮対象の画像は JPEG に変換し、変換後の MIMEType も実データに合わせて送信します。
 * **🧬 Robust Design**:
   * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。

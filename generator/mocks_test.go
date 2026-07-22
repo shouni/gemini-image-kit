@@ -92,10 +92,6 @@ func (m *mockReader) Open(_ context.Context, _ string) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(d)), nil
 }
 
-func (m *mockReader) List(_ context.Context, _ string, _ func(string) error) error {
-	return nil
-}
-
 // --- HTTP Client Mock ---
 
 type mockHTTPClient struct {

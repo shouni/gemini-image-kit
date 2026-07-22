@@ -44,13 +44,13 @@ func NewGeminiImageCore(
 	compress bool,
 ) (*GeminiImageCore, error) {
 	if aiClient == nil {
-		return nil, fmt.Errorf("aiClient is required")
+		return nil, ErrAIClientRequired
 	}
 	if reader == nil {
-		return nil, fmt.Errorf("reader is required")
+		return nil, ErrReaderRequired
 	}
 	if httpClient == nil {
-		return nil, fmt.Errorf("httpClient is required")
+		return nil, ErrHTTPClientRequired
 	}
 
 	return &GeminiImageCore{
@@ -131,7 +131,7 @@ func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (
 	}
 
 	finalData := rawData
-	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
+	if c.shouldCompress(mimeType) {
 		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compress image: %w", err)
@@ -150,13 +150,13 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 		return nil, err
 	}
 
-	return c.ParseToResponse(resp, ports.DereferenceSeed(opts.Seed))
+	return c.parseToResponse(resp, ports.DereferenceSeed(opts.Seed))
 }
 
-// ParseToResponse は Gemini からのレスポンスから画像データを抽出します。
+// parseToResponse は Gemini からのレスポンスから画像データを抽出します。
 // FinishReason の検証（安全フィルターによるブロック等）は下層の go-gemini-client が行い、
 // ブロック時は GenerateWithParts 自体がエラーを返すため、ここでは行いません。
-func (c *GeminiImageCore) ParseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
+func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
 	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
 		return nil, ErrEmptyResponse
 	}
