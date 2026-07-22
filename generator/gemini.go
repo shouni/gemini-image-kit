@@ -2,7 +2,6 @@ package generator
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/shouni/gemini-image-kit/ports"
 )
@@ -17,7 +16,7 @@ type GeminiGenerator struct {
 // NewGeminiGenerator は新しい GeminiGenerator を作成します。
 func NewGeminiGenerator(core ports.ImageExecutor) (*GeminiGenerator, error) {
 	if core == nil {
-		return nil, fmt.Errorf("core (ImageExecutor) is required")
+		return nil, ErrExecutorRequired
 	}
 
 	return &GeminiGenerator{

@@ -15,4 +15,12 @@ var (
 	ErrEmptyResponse = errors.New("invalid or empty response from Gemini")
 	// ErrNoImageData は、レスポンスに画像データが含まれていない場合に返されます。
 	ErrNoImageData = errors.New("no image data found in response")
+	// ErrAIClientRequired は、NewGeminiImageCore に aiClient が渡されなかった場合に返されます。
+	ErrAIClientRequired = errors.New("aiClient is required")
+	// ErrReaderRequired は、NewGeminiImageCore に reader が渡されなかった場合に返されます。
+	ErrReaderRequired = errors.New("reader is required")
+	// ErrHTTPClientRequired は、NewGeminiImageCore に httpClient が渡されなかった場合に返されます。
+	ErrHTTPClientRequired = errors.New("httpClient is required")
+	// ErrExecutorRequired は、NewGeminiGenerator に core (ImageExecutor) が渡されなかった場合に返されます。
+	ErrExecutorRequired = errors.New("core (ImageExecutor) is required")
 )

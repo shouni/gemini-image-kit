@@ -40,10 +40,15 @@ func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, fil
 
 // uploadByStrategy は、画像の圧縮設定に基づいてアップロードを実行します。
 func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (string, string, error) {
-	if c.compress && imgutil.IsCompressibleMimeType(mimeType) {
+	if c.shouldCompress(mimeType) {
 		return c.uploadCompressed(ctx, br, fileURI)
 	}
 	return c.uploadStream(ctx, br, mimeType, fileURI)
+}
+
+// shouldCompress は、指定された MIMEType の画像を圧縮すべきかを判定します。
+func (c *GeminiImageCore) shouldCompress(mimeType string) bool {
+	return c.compress && imgutil.IsCompressibleMimeType(mimeType)
 }
 
 // cacheGetString は、キャッシュから文字列を取得します。存在しない場合は空文字列と false を返します。
