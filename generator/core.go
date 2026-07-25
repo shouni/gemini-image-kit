@@ -85,13 +85,13 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 		return "", err
 	}
 
-	uri, fileName, err := c.uploadByStrategy(ctx, br, mimeType, fileURI)
+	uploaded, err := c.uploadByStrategy(ctx, br, mimeType, fileURI)
 	if err != nil {
 		return "", err
 	}
 
-	c.saveToCache(fileURI, uri, fileName)
-	return uri, nil
+	c.saveToCache(fileURI, uploaded.URI, uploaded.Name)
+	return uploaded.URI, nil
 }
 
 // DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。

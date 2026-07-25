@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/shouni/gemini-image-kit/imgutil"
+	"github.com/shouni/go-gemini-client/gemini"
 )
 
 // fetchImageData は、指定されたURLまたはCloud Storageから画像データ読み込み用の Reader を返します。
@@ -25,21 +26,21 @@ func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) (io
 }
 
 // uploadStream はストリームをそのままアップロードします。
-func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeType, fileURI string) (string, string, error) {
+func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeType, fileURI string) (gemini.UploadedFile, error) {
 	return c.aiClient.UploadFile(ctx, r, mimeType, filepath.Base(fileURI))
 }
 
 // uploadCompressed は画像をJPEGに圧縮してからアップロードします。
-func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, fileURI string) (string, string, error) {
+func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, fileURI string) (gemini.UploadedFile, error) {
 	compressed, err := imgutil.CompressToJPEG(r, ImageCompressionQuality)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to compress image for upload: %w", err)
+		return gemini.UploadedFile{}, fmt.Errorf("failed to compress image for upload: %w", err)
 	}
 	return c.aiClient.UploadFile(ctx, bytes.NewReader(compressed), "image/jpeg", filepath.Base(fileURI))
 }
 
 // uploadByStrategy は、画像の圧縮設定に基づいてアップロードを実行します。
-func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (string, string, error) {
+func (c *GeminiImageCore) uploadByStrategy(ctx context.Context, br *bufio.Reader, mimeType, fileURI string) (gemini.UploadedFile, error) {
 	if c.shouldCompress(mimeType) {
 		return c.uploadCompressed(ctx, br, fileURI)
 	}
