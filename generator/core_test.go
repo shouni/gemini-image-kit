@@ -9,8 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/shouni/gemini-image-kit/ports"
 )
 
 // 注意: mockAIClient, mockReader, mockHTTPClient, mockCache は
@@ -34,7 +37,7 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 		cache.Clear()
 		fileURL := "https://example.com/test.png"
 
-		uri, err := core.UploadFile(ctx, fileURL)
+		uri, err := core.EnsureUploaded(ctx, fileURL)
 
 		require.NoError(t, err)
 		assert.True(t, ai.uploadCalled, "expected AI client UploadFile to be called")
@@ -43,18 +46,21 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 		assert.Equal(t, MockFileUploadURI, uri)
 
 		// キャッシュに保存されているか確認
-		cachedURI, ok := cache.Get(cacheKeyFileAPIURI + fileURL)
+		cached, ok := cache.Get(cacheKeyFileAPI + fileURL)
 		assert.True(t, ok, "should be cached")
-		assert.Equal(t, uri, cachedURI)
+		entry, ok := cached.(cachedFile)
+		require.True(t, ok, "cache entry should be a cachedFile")
+		assert.Equal(t, uri, entry.URI)
+		assert.Equal(t, MockFileUploadName, entry.Name, "削除に必要な Name も同じエントリに入っていること")
 	})
 
 	t.Run("キャッシュがある場合はアップロードをスキップする", func(t *testing.T) {
 		ai.uploadCalled = false
 		fileURL := "https://example.com/cached.png"
 		expectedURI := "https://generativelanguage.googleapis.com/v1beta/files/already-uploaded"
-		cache.Set(cacheKeyFileAPIURI+fileURL, expectedURI, time.Hour)
+		cache.Set(cacheKeyFileAPI+fileURL, cachedFile{URI: expectedURI, Name: "files/already-uploaded"}, time.Hour)
 
-		uri, err := core.UploadFile(ctx, fileURL)
+		uri, err := core.EnsureUploaded(ctx, fileURL)
 
 		require.NoError(t, err)
 		assert.False(t, ai.uploadCalled, "AI client UploadFile should NOT be called when cached")
@@ -74,7 +80,7 @@ func TestGeminiImageCore_UploadFile_MIMEHandling(t *testing.T) {
 		core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, false)
 		require.NoError(t, err)
 
-		_, err = core.UploadFile(ctx, "https://example.com/no-extension")
+		_, err = core.EnsureUploaded(ctx, "https://example.com/no-extension")
 
 		require.NoError(t, err)
 		assert.Equal(t, "image/png", ai.lastUploadMIMEType)
@@ -87,7 +93,7 @@ func TestGeminiImageCore_UploadFile_MIMEHandling(t *testing.T) {
 		core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, true)
 		require.NoError(t, err)
 
-		_, err = core.UploadFile(ctx, "https://example.com/input.png")
+		_, err = core.EnsureUploaded(ctx, "https://example.com/input.png")
 
 		require.NoError(t, err)
 		assert.Equal(t, "image/jpeg", ai.lastUploadMIMEType)
@@ -110,7 +116,7 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 		fileURL := "https://example.com/image.png"
 		apiName := "files/specific-id"
 		// 削除にはこのキャッシュが必須
-		cache.Set(cacheKeyFileAPIName+fileURL, apiName, time.Hour)
+		cache.Set(cacheKeyFileAPI+fileURL, cachedFile{URI: "https://example.com/files/x", Name: apiName}, time.Hour)
 
 		err := core.DeleteFile(ctx, fileURL)
 
@@ -120,15 +126,14 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 
 	t.Run("削除に成功したらキャッシュも無効化される", func(t *testing.T) {
 		fileURL := "https://example.com/invalidate.png"
-		cache.Set(cacheKeyFileAPIURI+fileURL, "https://example.com/files/dead", time.Hour)
-		cache.Set(cacheKeyFileAPIName+fileURL, "files/dead-id", time.Hour)
+		cache.Set(cacheKeyFileAPI+fileURL, cachedFile{URI: "https://example.com/files/dead", Name: "files/dead-id"}, time.Hour)
 
 		err := core.DeleteFile(ctx, fileURL)
 
 		require.NoError(t, err)
-		_, ok := cache.Get(cacheKeyFileAPIURI + fileURL)
+		_, ok := cache.Get(cacheKeyFileAPI + fileURL)
 		assert.False(t, ok, "URI cache entry should be invalidated after deletion")
-		_, ok = cache.Get(cacheKeyFileAPIName + fileURL)
+		_, ok = cache.Get(cacheKeyFileAPI + fileURL)
 		assert.False(t, ok, "name cache entry should be invalidated after deletion")
 	})
 
@@ -157,4 +162,45 @@ func createPNGData(t *testing.T) []byte {
 	buf := new(bytes.Buffer)
 	require.NoError(t, png.Encode(buf, img))
 	return buf.Bytes()
+}
+
+// TestNewGeminiImageCore_RequiredDependencies は、必須依存の nil チェックを検証します。
+//
+// cache は「あれば速くなる」任意の依存に見えますが、DeleteFile が File API 上の
+// ファイル名をここから引くため、nil だと削除が一切できずサーバー側にファイルが
+// 残り続けます。したがって必須です。
+func TestNewGeminiImageCore_RequiredDependencies(t *testing.T) {
+	ai := &mockAIClient{}
+	reader := &mockReader{}
+	httpClient := &mockHTTPClient{}
+	cache := &mockCache{}
+
+	tests := []struct {
+		name    string
+		ai      gemini.GenerativeModel
+		reader  ports.ContentReader
+		http    ports.Downloader
+		cache   ports.ImageCacher
+		wantErr error
+	}{
+		{"aiClient なし", nil, reader, httpClient, cache, ErrAIClientRequired},
+		{"reader なし", ai, nil, httpClient, cache, ErrReaderRequired},
+		{"httpClient なし", ai, reader, nil, cache, ErrHTTPClientRequired},
+		{"cache なし", ai, reader, httpClient, nil, ErrCacheRequired},
+		{"すべて揃っている", ai, reader, httpClient, cache, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			core, err := NewGeminiImageCore(tt.ai, tt.reader, tt.http, tt.cache, time.Hour, false)
+
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				assert.NotNil(t, core)
+				return
+			}
+			assert.ErrorIs(t, err, tt.wantErr)
+			assert.Nil(t, core)
+		})
+	}
 }

@@ -24,7 +24,7 @@ func TestGeminiImageCore_PrepareImagePart(t *testing.T) {
 	t.Run("キャッシュヒット時はFileDataを返す", func(t *testing.T) {
 		rawURL := "https://example.com/img.png"
 		fileURI := "https://generativelanguage.googleapis.com/v1beta/files/test-id"
-		cache.Set(cacheKeyFileAPIURI+rawURL, fileURI, time.Hour)
+		cache.Set(cacheKeyFileAPI+rawURL, cachedFile{URI: fileURI, Name: "files/test-id"}, time.Hour)
 
 		// メソッド名を大文字に変更
 		part, err := core.PrepareImagePart(ctx, rawURL)

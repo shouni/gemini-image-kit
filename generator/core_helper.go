@@ -52,41 +52,39 @@ func (c *GeminiImageCore) shouldCompress(mimeType string) bool {
 	return c.compress && imgutil.IsCompressibleMimeType(mimeType)
 }
 
-// cacheGetString は、キャッシュから文字列を取得します。存在しない場合は空文字列と false を返します。
-func (c *GeminiImageCore) cacheGetString(key string) (string, bool) {
-	if c.cache == nil {
-		return "", false
-	}
-	val, ok := c.cache.Get(key)
-	if !ok {
-		return "", false
-	}
-	strVal, ok := val.(string)
-	if !ok {
-		return "", false
-	}
-	return strVal, true
+// cachedFile は File API 上のファイル参照です。
+//
+// URI と Name を1エントリにまとめて保存します。別々のキーに分けると、
+// 片方だけが失効したときに「生成には使えるが削除できない」中途半端な状態が
+// 生まれるためです（DeleteFile は Name に依存します）。
+type cachedFile struct {
+	URI  string
+	Name string
 }
 
-// getFromCache は、キャッシュからファイルのAPI URIを取得します。存在しない場合は空文字列と false を返します。
-func (c *GeminiImageCore) getFromCache(fileURI string) (string, bool) {
-	return c.cacheGetString(cacheKeyFileAPIURI + fileURI)
+// lookupCache は、ソース URI に紐づくキャッシュエントリを取得します。
+// 旧形式（文字列を個別キーに保存）のエントリは型アサーションに失敗して
+// ミス扱いになるため、キャッシュ形式の変更は安全に無視されます。
+func (c *GeminiImageCore) lookupCache(sourceURI string) (cachedFile, bool) {
+	val, ok := c.cache.Get(cacheKeyFileAPI + sourceURI)
+	if !ok {
+		return cachedFile{}, false
+	}
+	entry, ok := val.(cachedFile)
+	if !ok || entry.URI == "" {
+		return cachedFile{}, false
+	}
+	return entry, true
 }
 
-// saveToCache は、キャッシュにファイルのAPI URIとファイル名を保存します。
-func (c *GeminiImageCore) saveToCache(fileURI, uri, fileName string) {
-	if c.cache != nil {
-		c.cache.Set(cacheKeyFileAPIURI+fileURI, uri, c.expiration)
-		c.cache.Set(cacheKeyFileAPIName+fileURI, fileName, c.expiration)
-	}
+// storeCache は、ソース URI に紐づくキャッシュエントリを保存します。
+func (c *GeminiImageCore) storeCache(sourceURI string, entry cachedFile) {
+	c.cache.Set(cacheKeyFileAPI+sourceURI, entry, c.expiration)
 }
 
 // removeFromCache は、指定されたソース URI に紐づくキャッシュエントリを削除します。
-func (c *GeminiImageCore) removeFromCache(fileURI string) {
-	if c.cache != nil {
-		c.cache.Delete(cacheKeyFileAPIURI + fileURI)
-		c.cache.Delete(cacheKeyFileAPIName + fileURI)
-	}
+func (c *GeminiImageCore) removeFromCache(sourceURI string) {
+	c.cache.Delete(cacheKeyFileAPI + sourceURI)
 }
 
 // detectUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証し、MIMETypeを返します。

@@ -20,8 +20,7 @@ import (
 const (
 	// ImageCompressionQuality は、画像圧縮時に使用するJPEG品質値です。
 	ImageCompressionQuality = 75
-	cacheKeyFileAPIURI      = "fileapi_uri:"
-	cacheKeyFileAPIName     = "fileapi_name:"
+	cacheKeyFileAPI         = "fileapi:"
 )
 
 // GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
@@ -52,6 +51,11 @@ func NewGeminiImageCore(
 	if httpClient == nil {
 		return nil, ErrHTTPClientRequired
 	}
+	// cache は任意ではありません。DeleteFile が File API 上のファイル名を
+	// キャッシュから引くため、nil だと削除が一切できなくなります。
+	if cache == nil {
+		return nil, ErrCacheRequired
+	}
 
 	return &GeminiImageCore{
 		aiClient:   aiClient,
@@ -68,10 +72,14 @@ func (c *GeminiImageCore) IsVertexAI() bool {
 	return c.aiClient.IsVertexAI()
 }
 
-// UploadFile は指定された fileURI の画像を Gemini File API にアップロードし、アップロード先の URI を返します。
-func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (string, error) {
-	if uri, ok := c.getFromCache(fileURI); ok {
-		return uri, nil
+// EnsureUploaded は指定された fileURI の画像を Gemini File API にアップロードし、
+// アップロード先の URI を返します。すでにアップロード済みならキャッシュの URI を返します。
+//
+// 引数の Reader を受け取る gemini.FileManager.UploadFile とは役割が異なります
+// （こちらは「URL から取得してアップロードするところまで」を担います）。
+func (c *GeminiImageCore) EnsureUploaded(ctx context.Context, fileURI string) (string, error) {
+	if entry, ok := c.lookupCache(fileURI); ok {
+		return entry.URI, nil
 	}
 
 	rc, err := c.fetchImageData(ctx, fileURI)
@@ -90,18 +98,18 @@ func (c *GeminiImageCore) UploadFile(ctx context.Context, fileURI string) (strin
 		return "", err
 	}
 
-	c.saveToCache(fileURI, uploaded.URI, uploaded.Name)
+	c.storeCache(fileURI, cachedFile{URI: uploaded.URI, Name: uploaded.Name})
 	return uploaded.URI, nil
 }
 
 // DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
 // 削除に成功した場合は、同じソース URI での再利用を防ぐためキャッシュも無効化します。
 func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
-	name, ok := c.cacheGetString(cacheKeyFileAPIName + fileURI)
-	if !ok {
+	entry, ok := c.lookupCache(fileURI)
+	if !ok || entry.Name == "" {
 		return fmt.Errorf("%w: %s", ErrFileNotInCache, fileURI)
 	}
-	if err := c.aiClient.DeleteFile(ctx, name); err != nil {
+	if err := c.aiClient.DeleteFile(ctx, entry.Name); err != nil {
 		return err
 	}
 	c.removeFromCache(fileURI)
@@ -110,8 +118,11 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 
 // PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
 func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (*genai.Part, error) {
-	if uri, ok := c.cacheGetString(cacheKeyFileAPIURI + rawURL); ok {
-		return &genai.Part{FileData: &genai.FileData{FileURI: uri}}, nil
+	// キャッシュヒット時も非キャッシュ経路と同じ組み立てを通す。
+	// ここで MIMEType を省くと、同じ画像でもキャッシュの有無で
+	// API に送るペイロードが変わってしまう。
+	if entry, ok := c.lookupCache(rawURL); ok {
+		return buildFileDataPart(entry.URI, rawURL), nil
 	}
 
 	rc, err := c.fetchImageData(ctx, rawURL)

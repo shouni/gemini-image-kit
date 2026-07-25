@@ -60,7 +60,8 @@ func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageU
 	if uri.FileAPIURI != "" {
 		return buildFileDataPart(uri.FileAPIURI, uri.ReferenceURL), nil
 	}
-	if uri.ReferenceURL == "" {
+	// 参照先が一切設定されていない要素は読み飛ばす（テキストのみの生成で使われる）。
+	if uri.IsEmpty() {
 		return nil, nil
 	}
 	part, err := g.core.PrepareImagePart(ctx, uri.ReferenceURL)
@@ -71,24 +72,32 @@ func (g *GeminiGenerator) resolveImagePart(ctx context.Context, uri ports.ImageU
 }
 
 // buildFileDataPart はファイルデータパーツを生成します。
+//
+// 拡張子から MIME type を判別できない場合は MIMEType を設定しません。
+// 誤った型を申告するとサーバー側のデコードが失敗しうるため、
+// 推測できないときはサーバーのコンテンツ判定に委ねます。
 func buildFileDataPart(fileURI, mimeHintURI string) *genai.Part {
-	return &genai.Part{
-		FileData: &genai.FileData{
-			FileURI:  fileURI,
-			MIMEType: imgutil.GuessMIMEType(mimeHintURI),
-		},
+	fileData := &genai.FileData{FileURI: fileURI}
+	if mimeType := imgutil.GuessMIMEType(mimeHintURI); mimeType != "" {
+		fileData.MIMEType = mimeType
 	}
+	return &genai.Part{FileData: fileData}
 }
 
 // toOptions は Gemini へのリクエストオプションを構築します。
 func (g *GeminiGenerator) toOptions(req ports.GenerationOptions) gemini.GenerateOptions {
 	isVertex := g.core.IsVertexAI()
 	opts := gemini.GenerateOptions{
-		AspectRatio:    req.AspectRatio,
-		ImageSize:      req.ImageSize,
-		SystemPrompt:   req.SystemPrompt,
-		Seed:           req.Seed,
-		SafetySettings: g.buildSafetySettings(isVertex),
+		AspectRatio:     req.AspectRatio,
+		ImageSize:       req.ImageSize,
+		SystemPrompt:    req.SystemPrompt,
+		Seed:            req.Seed,
+		SafetySettings:  g.buildSafetySettings(isVertex),
+		Temperature:     req.Temperature,
+		TopP:            req.TopP,
+		MaxOutputTokens: req.MaxOutputTokens,
+		ThinkingBudget:  req.ThinkingBudget,
+		ThinkingLevel:   req.ThinkingLevel,
 	}
 
 	// Vertex AI の場合のみ PersonGeneration を設定する
