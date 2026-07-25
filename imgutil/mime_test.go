@@ -13,9 +13,9 @@ func TestGuessMIMEType(t *testing.T) {
 		{"https://example.com/photo.JPEG", "image/jpeg"},
 		{"path/to/icon.png", "image/png"},
 		{"image.webp", "image/webp"},
-		{"image.gif", "image/gif"},     // 新しく追加したケースにも対応
-		{"document.pdf", "image/jpeg"}, // 未対応拡張子はフォールバック
-		{"no_extension", "image/jpeg"},
+		{"image.gif", "image/gif"}, // 新しく追加したケースにも対応
+		{"document.pdf", ""},       // 判別できない場合は空。誤った型を申告しない
+		{"no_extension", ""},
 	}
 
 	for _, tt := range tests {

@@ -20,7 +20,10 @@ func GuessMIMEType(path string) string {
 	case ".gif":
 		return "image/gif"
 	default:
-		return "image/jpeg"
+		// 推測できない場合に既定値を返すと、PNG を JPEG と申告するような
+		// 誤った型宣言になりうる。空文字列を返して呼び出し側に判断を委ね、
+		// サーバー側のコンテンツ判定に任せる。
+		return ""
 	}
 }
 

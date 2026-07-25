@@ -36,7 +36,46 @@ jobs:
         run: test -z "$(gofmt -l .)"
 
       - name: Test (with race detector)
-        run: go test -race ./...
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          {
+            echo "### Coverage"
+            echo '```'
+            tail -n 1 coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  fuzz:
+    name: Fuzz (smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # 画像バイナリは外部から与えられるため、判定と圧縮の経路を毎回ファジングする。
+      # 失敗した場合は再現用シードを imgutil/testdata/fuzz/ にコミットして回帰テスト化する。
+      - name: Fuzz DetectMIMEType
+        run: go test ./imgutil -run '^$' -fuzz FuzzDetectMIMEType -fuzztime 60s
+
+      - name: Fuzz CompressToJPEG
+        run: go test ./imgutil -run '^$' -fuzz FuzzCompressToJPEG -fuzztime 60s
+
+      - name: Upload fuzz failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus
+          path: imgutil/testdata/fuzz/
+          retention-days: 7
+          if-no-files-found: ignore
 
   lint:
     name: Lint

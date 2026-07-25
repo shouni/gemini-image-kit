@@ -21,6 +21,10 @@ var (
 	ErrReaderRequired = errors.New("reader is required")
 	// ErrHTTPClientRequired は、NewGeminiImageCore に httpClient が渡されなかった場合に返されます。
 	ErrHTTPClientRequired = errors.New("httpClient is required")
+	// ErrCacheRequired は、NewGeminiImageCore に cache が渡されなかった場合に返されます。
+	// DeleteFile は File API 上のファイル名をキャッシュから引くため、
+	// cache なしでは削除が一切できずサーバー側にファイルが残り続けます。
+	ErrCacheRequired = errors.New("cache is required")
 	// ErrExecutorRequired は、NewGeminiGenerator に core (ImageExecutor) が渡されなかった場合に返されます。
 	ErrExecutorRequired = errors.New("core (ImageExecutor) is required")
 )

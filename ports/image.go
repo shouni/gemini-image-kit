@@ -2,7 +2,10 @@
 // インターフェース（ポート）と、画像生成・編集に関する共通データ型を定義します。
 package ports
 
-import "github.com/shouni/go-gemini-client/gemini"
+import (
+	"github.com/shouni/go-gemini-client/gemini"
+	"google.golang.org/genai"
+)
 
 // ImageURI は画像の参照先情報を保持します。
 type ImageURI struct {
@@ -28,6 +31,28 @@ type GenerationOptions struct {
 	// Vertex AI バックエンドでのみ適用され、未指定時は PersonGenerationAllowAll になります。
 	// Gemini API バックエンドではこのフィールドを設定すると API エラーになるため、常に無視されます。
 	PersonGeneration gemini.PersonGeneration
+
+	// 以下は gemini.GenerateOptions へそのまま渡される生成パラメータです。
+	// ゼロ値が意味を持つ項目はポインタで、nil は「SDK のデフォルトに委ねる」を意味します。
+	// 設定には gemini.Ptr ヘルパーが使えます。
+	//
+	// これらは Gemini API 上で非推奨ではありませんが、画像生成モデルが
+	// どこまで解釈するかはモデル依存です（テキスト生成向けのパラメータのため、
+	// 無視される場合があります）。
+
+	// Temperature は出力のランダム性です。nil で SDK デフォルト。
+	Temperature *float32
+	// TopP は核サンプリングの閾値です。nil で SDK デフォルト。
+	TopP *float32
+	// MaxOutputTokens は生成する最大トークン数です。0 で SDK デフォルト。
+	MaxOutputTokens int32
+	// ThinkingBudget は思考トークンの上限です。
+	// gemini.Ptr[int32](0) で思考を無効化し、レイテンシとコストを抑えられます。
+	// 有効範囲はモデル依存のため、モデルを跨ぐ場合は ThinkingLevel を推奨します。
+	ThinkingBudget *int32
+	// ThinkingLevel は思考量の段階指定です（MINIMAL / LOW / MEDIUM / HIGH）。
+	// ThinkingBudget と併用した場合はこちらが優先されます。
+	ThinkingLevel genai.ThinkingLevel
 }
 
 // SingleImageRequest は単一の参照画像を使う画像生成要求です。
