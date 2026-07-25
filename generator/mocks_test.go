@@ -32,16 +32,16 @@ func (m *mockAIClient) IsVertexAI() bool {
 	return m.backend == genai.BackendVertexAI
 }
 
-func (m *mockAIClient) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (string, string, error) {
+func (m *mockAIClient) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (gemini.UploadedFile, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return "", "", err
+		return gemini.UploadedFile{}, err
 	}
 
 	m.uploadCalled = true
 	m.lastUploadMIMEType = mimeType
 	m.lastUploadData = data
-	return MockFileUploadURI, MockFileUploadName, nil
+	return gemini.UploadedFile{URI: MockFileUploadURI, Name: MockFileUploadName}, nil
 }
 
 func (m *mockAIClient) DeleteFile(_ context.Context, name string) error {
