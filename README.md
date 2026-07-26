@@ -49,6 +49,18 @@ GenerateSingleImage(ctx, ports.SingleImageRequest)
 GenerateFusedImage(ctx, ports.ImageFusionRequest)
 ```
 
+内部の `GeminiImageCore` は `ports.AssetManager`（File API のアップロード・削除）と `ports.ImageExecutor`（生成実行・参照画像の準備）を担います。参照画像は `gemini.Attachment` として渡され、バイト列でも `gs://` や `files/...` の URI 参照でも同じ型で表現されます。
+
+```go
+// 生成リクエストの実行（プロンプト + 参照画像の添付）
+ExecuteRequest(ctx, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions)
+
+// URL / GCS から参照画像を取得し、添付へ変換（キャッシュ済みなら URI 参照を返す）
+PrepareImageAttachment(ctx, rawURL string) (gemini.Attachment, error)
+```
+
+このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
+
 ---
 
 ## 🚀 Quick Start
@@ -83,14 +95,14 @@ func main() {
        log.Fatal(err)
     }
 
-    core, err := generator.NewGeminiImageCore(
-       ai,
-       noStorageReader{},
-       httpDownloader{client: http.DefaultClient},
-       newMemoryCache(),
-       24*time.Hour,
-       true, // PNG/GIF を JPEG に変換して送信サイズを抑える
-    )
+    core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
+       AIClient:   ai,
+       Reader:     noStorageReader{},
+       HTTPClient: httpDownloader{client: http.DefaultClient},
+       Cache:      newMemoryCache(),
+       CacheTTL:   24 * time.Hour,
+       Compress:   true, // PNG/GIF を JPEG に変換して送信サイズを抑える
+    })
     if err != nil {
        log.Fatal(err)
     }
@@ -102,7 +114,7 @@ func main() {
 
     resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
        GenerationOptions: ports.GenerationOptions{
-          Model:          "gemini-3-pro-image-preview",
+          Model:          "gemini-3-pro-image",
           Prompt:         "参照画像の人物を、白背景の商品広告風ポートレートにしてください。",
           NegativePrompt: "low quality, blurry, distorted hands",
           AspectRatio:    "1:1",
@@ -183,7 +195,7 @@ func (c *memoryCache) Delete(key string) {
 ```go
 resp, err := g.GenerateFusedImage(ctx, ports.ImageFusionRequest{
     GenerationOptions: ports.GenerationOptions{
-       Model:       "gemini-3-pro-image-preview",
+       Model:       "gemini-3-pro-image",
        Prompt:      "1枚目のキャラクターを、2枚目の服装と3枚目の背景に自然に合成してください。",
        AspectRatio: "16:9",
        ImageSize:   "2K",
@@ -209,14 +221,14 @@ if err != nil {
     log.Fatal(err)
 }
 
-core, err := generator.NewGeminiImageCore(
-    ai,
-    noStorageReader{},
-    httpDownloader{client: http.DefaultClient},
-    newMemoryCache(),
-    24*time.Hour,
-    false,
-)
+core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
+	AIClient:   ai,
+	Reader:     noStorageReader{},
+	HTTPClient: httpDownloader{client: http.DefaultClient},
+	Cache:      newMemoryCache(),
+	CacheTTL:   24*time.Hour,
+	Compress:   false,
+})
 if err != nil {
     log.Fatal(err)
 }
@@ -228,7 +240,7 @@ if err != nil {
 
 resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
     GenerationOptions: ports.GenerationOptions{
-       Model:       "gemini-3-pro-image-preview",
+       Model:       "gemini-3-pro-image",
        Prompt:      "この商品画像を、SNS 広告向けの高級感ある構図にしてください。",
        AspectRatio: "4:5",
        ImageSize:   "1K",
@@ -243,12 +255,12 @@ resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
 
 ### 4. 既存画像を編集する（Nano Banana系モデルによる会話型編集）
 
-このライブラリに画像編集専用の API はありませんが、既存画像を `SingleImageRequest.Image` に、編集指示を `Prompt` に渡して `GenerateSingleImage` を呼ぶことで、Gemini の会話型マルチモーダル画像モデル（`gemini-2.5-flash-image` など）による編集が行えます。
+このライブラリに画像編集専用の API はありませんが、既存画像を `SingleImageRequest.Image` に、編集指示を `Prompt` に渡して `GenerateSingleImage` を呼ぶことで、Gemini の会話型マルチモーダル画像モデル（`gemini-3.1-flash-image` など）による編集が行えます。
 
 ```go
 resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
     GenerationOptions: ports.GenerationOptions{
-       Model:  "gemini-2.5-flash-image",
+       Model:  "gemini-3.1-flash-image",
        Prompt: "対象領域のバッグを黒いレザーバッグに差し替えてください。他の部分は変更しないでください。",
     },
     Image: ports.ImageURI{
@@ -276,35 +288,26 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 - `ErrEmptyPrompt`: プロンプト（ネガティブプロンプト含む）が空の場合。
 - `ErrUnsupportedFileFormat`: 取得したデータが画像として扱えない場合。
 - `ErrFileNotInCache`: File API のファイル名がキャッシュから引けず削除できない場合。
-- `ErrEmptyResponse`: Gemini からのレスポンスが空または不正な場合。
 - `ErrNoImageData`: レスポンスに画像データが含まれていない場合。
 
 ---
 
-## 📂 プロジェクト構造 (Project Structure)
+## 📂 パッケージ構成 (Packages)
 
-```text
-gemini-image-kit/
-├── generator/           # 画像生成のコアロジック
-│   ├── core.go          # GeminiImageCore（File API のライフサイクル管理）
-│   ├── core_helper.go   # 画像フェッチ・パース処理
-│   ├── gemini.go        # GeminiGenerator（高レベルジェネレーター）
-│   └── gemini_helper.go # パーツ収集、プロンプト構築ロジック
-├── ports/               # 外部インターフェースおよび入出力モデル定義
-│   ├── interfaces.go    # ImageExecutor / ImageCacher 等の抽象化定義
-│   ├── image.go         # リクエスト/レスポンス、ImageURI 等の型定義
-│   └── image_helpers.go # ドメインモデルに関連するヘルパー関数
-└── imgutil/             # 画像処理ユーティリティ
-    ├── mime.go          # MIMEタイプ判定ロジック
-    └── compressor.go    # 送信前画像圧縮（JPEG最適化等）
-```
+| パッケージ | 役割 |
+| --- | --- |
+| `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装。`GeminiGenerator`（高レベル API）と `GeminiImageCore`（生成実行・参照画像の準備・File API のライフサイクル管理）。 |
+| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `ImageExecutor` / `AssetManager` / `ImageCacher`、リクエスト・レスポンス型、`ImageURI`。 |
+| `github.com/shouni/gemini-image-kit/imgutil` | 画像ユーティリティ。MIME タイプ判定と送信前の JPEG 圧縮。 |
+
+`generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
 
 ---
 
 ## 🤝 依存関係 (Dependencies)
 
-* [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
 * [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - **Backend（Vertex AI / Google AI）を抽象化するクライアント**
+* [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK（`go-gemini-client` 経由の間接依存。公開 API には現れません）
 
 ---
 

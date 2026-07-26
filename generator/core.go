@@ -11,59 +11,77 @@ import (
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
 
 	"github.com/shouni/gemini-image-kit/imgutil"
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
 const (
-	// ImageCompressionQuality は、画像圧縮時に使用するJPEG品質値です。
-	ImageCompressionQuality = 75
-	cacheKeyFileAPI         = "fileapi:"
+	// DefaultCompressionQuality は、圧縮品質が指定されなかった場合のJPEG品質値です。
+	DefaultCompressionQuality = 75
+	cacheKeyFileAPI           = "fileapi:"
 )
 
 // GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
 type GeminiImageCore struct {
-	aiClient   gemini.GenerativeModel
-	reader     ports.ContentReader
-	httpClient ports.Downloader
-	cache      ports.ImageCacher
-	expiration time.Duration
-	compress   bool
+	aiClient           gemini.MultimodalModel
+	reader             ports.ContentReader
+	httpClient         ports.Downloader
+	cache              ports.ImageCacher
+	expiration         time.Duration
+	compress           bool
+	compressionQuality int
+}
+
+// GeminiImageCoreConfig は GeminiImageCore の依存関係と設定です。
+//
+// 位置引数で受けると、呼び出し側に true/false や数値が並んで何の設定か読めなくなります。
+type GeminiImageCoreConfig struct {
+	// AIClient / Reader / HTTPClient / Cache はいずれも必須です。
+	// Cache が必須なのは、DeleteFile が File API 上のファイル名をキャッシュから引くためです。
+	AIClient   gemini.MultimodalModel
+	Reader     ports.ContentReader
+	HTTPClient ports.Downloader
+	Cache      ports.ImageCacher
+	// CacheTTL はアップロード済みファイルの参照を保持する期間です。
+	CacheTTL time.Duration
+	// Compress を true にすると、参照画像を送信前に JPEG へ再圧縮します。
+	Compress bool
+	// CompressionQuality は Compress が true のときの JPEG 品質です。
+	// 0 以下なら DefaultCompressionQuality を使います。
+	CompressionQuality int
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
-func NewGeminiImageCore(
-	aiClient gemini.GenerativeModel,
-	reader ports.ContentReader,
-	httpClient ports.Downloader,
-	cache ports.ImageCacher,
-	cacheTTL time.Duration,
-	compress bool,
-) (*GeminiImageCore, error) {
-	if aiClient == nil {
+func NewGeminiImageCore(cfg GeminiImageCoreConfig) (*GeminiImageCore, error) {
+	if cfg.AIClient == nil {
 		return nil, ErrAIClientRequired
 	}
-	if reader == nil {
+	if cfg.Reader == nil {
 		return nil, ErrReaderRequired
 	}
-	if httpClient == nil {
+	if cfg.HTTPClient == nil {
 		return nil, ErrHTTPClientRequired
 	}
 	// cache は任意ではありません。DeleteFile が File API 上のファイル名を
 	// キャッシュから引くため、nil だと削除が一切できなくなります。
-	if cache == nil {
+	if cfg.Cache == nil {
 		return nil, ErrCacheRequired
 	}
 
+	quality := cfg.CompressionQuality
+	if quality <= 0 {
+		quality = DefaultCompressionQuality
+	}
+
 	return &GeminiImageCore{
-		aiClient:   aiClient,
-		reader:     reader,
-		httpClient: httpClient,
-		cache:      cache,
-		expiration: cacheTTL,
-		compress:   compress,
+		aiClient:           cfg.AIClient,
+		reader:             cfg.Reader,
+		httpClient:         cfg.HTTPClient,
+		cache:              cfg.Cache,
+		expiration:         cfg.CacheTTL,
+		compress:           cfg.Compress,
+		compressionQuality: quality,
 	}, nil
 }
 
@@ -116,47 +134,47 @@ func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error 
 	return nil
 }
 
-// PrepareImagePart は URL または cloud storageから画像を準備し、genai.Part に変換します。
-func (c *GeminiImageCore) PrepareImagePart(ctx context.Context, rawURL string) (*genai.Part, error) {
+// PrepareImageAttachment は URL または cloud storage から画像を準備し、添付へ変換します。
+func (c *GeminiImageCore) PrepareImageAttachment(ctx context.Context, rawURL string) (gemini.Attachment, error) {
 	// キャッシュヒット時も非キャッシュ経路と同じ組み立てを通す。
 	// ここで MIMEType を省くと、同じ画像でもキャッシュの有無で
 	// API に送るペイロードが変わってしまう。
 	if entry, ok := c.lookupCache(rawURL); ok {
-		return buildFileDataPart(entry.URI, rawURL), nil
+		return fileAttachment(entry.URI, rawURL), nil
 	}
 
 	rc, err := c.fetchImageData(ctx, rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch image data: %w", err)
+		return gemini.Attachment{}, fmt.Errorf("failed to fetch image data: %w", err)
 	}
 	defer rc.Close()
 
 	rawData, err := io.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read image data: %w", err)
+		return gemini.Attachment{}, fmt.Errorf("failed to read image data: %w", err)
 	}
 
 	mimeType := imgutil.DetectMIMEType(rawData)
 	if !imgutil.IsImageMIMEType(mimeType) {
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedFileFormat, mimeType)
+		return gemini.Attachment{}, fmt.Errorf("%w: %s", ErrUnsupportedFileFormat, mimeType)
 	}
 
 	finalData := rawData
 	if c.shouldCompress(mimeType) {
-		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), ImageCompressionQuality)
+		compressed, err := imgutil.CompressToJPEG(bytes.NewReader(rawData), c.compressionQuality)
 		if err != nil {
-			return nil, fmt.Errorf("failed to compress image: %w", err)
+			return gemini.Attachment{}, fmt.Errorf("failed to compress image: %w", err)
 		}
 		finalData = compressed
 		mimeType = "image/jpeg"
 	}
 
-	return &genai.Part{InlineData: &genai.Blob{MIMEType: mimeType, Data: finalData}}, nil
+	return gemini.Attachment{MIMEType: mimeType, Data: finalData}, nil
 }
 
 // ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
-func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
-	resp, err := c.aiClient.GenerateWithParts(ctx, model, parts, opts)
+func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+	resp, err := c.aiClient.GenerateWithAttachments(ctx, model, prompt, attachments, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -166,26 +184,24 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, part
 
 // parseToResponse は Gemini からのレスポンスから画像データを抽出します。
 // FinishReason の検証（安全フィルターによるブロック等）は下層の go-gemini-client が行い、
-// ブロック時は GenerateWithParts 自体がエラーを返すため、ここでは行いません。
+// ブロック時は生成呼び出し自体がエラーを返すため、ここでは行いません。
 func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
-	if resp == nil || resp.RawResponse == nil || len(resp.RawResponse.Candidates) == 0 {
-		return nil, ErrEmptyResponse
+	if resp == nil {
+		return nil, fmt.Errorf("%w: no response", ErrNoImageData)
 	}
 
-	candidate := resp.RawResponse.Candidates[0]
-	if candidate.Content == nil {
-		return nil, fmt.Errorf("%w: no content in candidate", ErrNoImageData)
-	}
-
-	for _, part := range candidate.Content.Parts {
-		if part.InlineData != nil {
-			return &ports.ImageResponse{
-				Data:     part.InlineData.Data,
-				MimeType: part.InlineData.MIMEType,
-				UsedSeed: seed,
-			}, nil
+	// Response.Attachments は MIME type 込みで返るため、保存時の Content-Type を決めるために
+	// 生の SDK レスポンスを辿る必要はありません。
+	for _, attachment := range resp.Attachments {
+		if len(attachment.Data) == 0 {
+			continue
 		}
+		return &ports.ImageResponse{
+			Data:     attachment.Data,
+			MimeType: attachment.MIMEType,
+			UsedSeed: seed,
+		}, nil
 	}
 
-	return nil, fmt.Errorf("%w: parts contain no inline image", ErrNoImageData)
+	return nil, fmt.Errorf("%w: response contains no inline image", ErrNoImageData)
 }

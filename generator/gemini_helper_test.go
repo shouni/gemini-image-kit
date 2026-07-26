@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/shouni/go-gemini-client/gemini"
+
 	"github.com/shouni/gemini-image-kit/ports"
-	"google.golang.org/genai"
 )
 
 func TestBuildFinalPrompt(t *testing.T) {
@@ -59,11 +60,14 @@ func TestCollectImageParts(t *testing.T) {
 
 	// 1. モックのセットアップ
 	// Vertex AI モードをシミュレートするモック
-	mockAI := &mockAIClient{backend: genai.BackendVertexAI}
+	mockAI := &mockAIClient{vertexAI: true}
 
 	// GeminiImageCore の初期化 (reader や httpClient は nil でもこのテスト範囲なら動きますが、
 	// 本来は mockReader 等を渡すのが安全です)
-	core, _ := NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0, true)
+	core, _ := NewGeminiImageCore(GeminiImageCoreConfig{
+		AIClient: mockAI, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
+		Cache: &mockCache{}, CacheTTL: 0, Compress: true,
+	})
 
 	g := &GeminiGenerator{
 		core: core,
@@ -73,7 +77,7 @@ func TestCollectImageParts(t *testing.T) {
 		name     string
 		isVertex bool
 		uris     []ports.ImageURI
-		verify   func(t *testing.T, parts []*genai.Part)
+		verify   func(t *testing.T, attachments []gemini.Attachment)
 	}{
 		{
 			name:     "Vertex AI モードで GCS URI を処理",
@@ -81,13 +85,13 @@ func TestCollectImageParts(t *testing.T) {
 			uris: []ports.ImageURI{
 				{ReferenceURL: "gs://my-bucket/char.png"},
 			},
-			verify: func(t *testing.T, parts []*genai.Part) {
-				if len(parts) != 1 || parts[0].FileData == nil {
-					t.Fatalf("FileData パーツが生成されていません")
+			verify: func(t *testing.T, attachments []gemini.Attachment) {
+				if len(attachments) != 1 {
+					t.Fatalf("添付が生成されていません")
 				}
-				p := parts[0].FileData
-				if p.FileURI != "gs://my-bucket/char.png" || p.MIMEType != "image/png" {
-					t.Errorf("GCSパスが正しくセットされていません: %+v", p)
+				got := attachments[0]
+				if got.URI != "gs://my-bucket/char.png" || got.MIMEType != "image/png" {
+					t.Errorf("GCSパスが正しくセットされていません: %+v", got)
 				}
 			},
 		},
@@ -100,13 +104,12 @@ func TestCollectImageParts(t *testing.T) {
 					FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/abc-123",
 				},
 			},
-			verify: func(t *testing.T, parts []*genai.Part) {
-				if len(parts) != 1 || parts[0].FileData == nil {
-					t.Fatalf("FileData パーツが生成されていません")
+			verify: func(t *testing.T, attachments []gemini.Attachment) {
+				if len(attachments) != 1 {
+					t.Fatalf("添付が生成されていません")
 				}
-				p := parts[0].FileData
-				if p.FileURI != "https://generativelanguage.googleapis.com/v1beta/files/abc-123" {
-					t.Errorf("FileAPIURI が優先されていません: %s", p.FileURI)
+				if got := attachments[0].URI; got != "https://generativelanguage.googleapis.com/v1beta/files/abc-123" {
+					t.Errorf("FileAPIURI が優先されていません: %s", got)
 				}
 			},
 		},
@@ -115,19 +118,18 @@ func TestCollectImageParts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// テストケースごとに独立したモックとジェネレータを初期化
-			backend := genai.BackendGeminiAPI
-			if tt.isVertex {
-				backend = genai.BackendVertexAI
-			}
-			mockAI = &mockAIClient{backend: backend}
-			core, _ = NewGeminiImageCore(mockAI, &mockReader{}, &mockHTTPClient{}, &mockCache{}, 0, true)
+			mockAI = &mockAIClient{vertexAI: tt.isVertex}
+			core, _ = NewGeminiImageCore(GeminiImageCoreConfig{
+				AIClient: mockAI, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
+				Cache: &mockCache{}, CacheTTL: 0, Compress: true,
+			})
 			g = &GeminiGenerator{core: core}
 
-			parts, err := g.collectImageParts(ctx, tt.uris)
+			attachments, err := g.collectImageAttachments(ctx, tt.uris)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			tt.verify(t, parts)
+			tt.verify(t, attachments)
 		})
 	}
 }

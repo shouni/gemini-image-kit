@@ -28,7 +28,10 @@ func TestGeminiImageCore_UploadFile(t *testing.T) {
 	httpMock := &mockHTTPClient{data: append(pngHeader, []byte("fake-image-binary")...)}
 	reader := &mockReader{}
 
-	core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, false)
+	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+		AIClient: ai, Reader: reader, HTTPClient: httpMock,
+		Cache: cache, CacheTTL: time.Hour, Compress: false,
+	})
 	require.NoError(t, err, "failed to create core")
 
 	t.Run("キャッシュがない場合はアップロードが実行される", func(t *testing.T) {
@@ -77,7 +80,10 @@ func TestGeminiImageCore_UploadFile_MIMEHandling(t *testing.T) {
 		ai := &mockAIClient{}
 		pngHeader := []byte("\x89PNG\r\n\x1a\n")
 		httpMock := &mockHTTPClient{data: append(pngHeader, []byte("fake-image-binary")...)}
-		core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, false)
+		core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+			AIClient: ai, Reader: reader, HTTPClient: httpMock,
+			Cache: cache, CacheTTL: time.Hour, Compress: false,
+		})
 		require.NoError(t, err)
 
 		_, err = core.EnsureUploaded(ctx, "https://example.com/no-extension")
@@ -90,7 +96,10 @@ func TestGeminiImageCore_UploadFile_MIMEHandling(t *testing.T) {
 		cache := &mockCache{data: make(map[string]any)}
 		ai := &mockAIClient{}
 		httpMock := &mockHTTPClient{data: createPNGData(t)}
-		core, err := NewGeminiImageCore(ai, reader, httpMock, cache, time.Hour, true)
+		core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+			AIClient: ai, Reader: reader, HTTPClient: httpMock,
+			Cache: cache, CacheTTL: time.Hour, Compress: true,
+		})
 		require.NoError(t, err)
 
 		_, err = core.EnsureUploaded(ctx, "https://example.com/input.png")
@@ -110,7 +119,10 @@ func TestGeminiImageCore_DeleteFile(t *testing.T) {
 	reader := &mockReader{}
 
 	// 修正: 圧縮設定を false に統一
-	core, _ := NewGeminiImageCore(ai, reader, &mockHTTPClient{}, cache, time.Hour, false)
+	core, _ := NewGeminiImageCore(GeminiImageCoreConfig{
+		AIClient: ai, Reader: reader, HTTPClient: &mockHTTPClient{},
+		Cache: cache, CacheTTL: time.Hour, Compress: false,
+	})
 
 	t.Run("キャッシュから名前を引いて削除に成功する", func(t *testing.T) {
 		fileURL := "https://example.com/image.png"
@@ -177,7 +189,7 @@ func TestNewGeminiImageCore_RequiredDependencies(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		ai      gemini.GenerativeModel
+		ai      gemini.MultimodalModel
 		reader  ports.ContentReader
 		http    ports.Downloader
 		cache   ports.ImageCacher
@@ -192,7 +204,10 @@ func TestNewGeminiImageCore_RequiredDependencies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			core, err := NewGeminiImageCore(tt.ai, tt.reader, tt.http, tt.cache, time.Hour, false)
+			core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+				AIClient: tt.ai, Reader: tt.reader, HTTPClient: tt.http,
+				Cache: tt.cache, CacheTTL: time.Hour, Compress: false,
+			})
 
 			if tt.wantErr == nil {
 				require.NoError(t, err)

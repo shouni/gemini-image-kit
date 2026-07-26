@@ -32,7 +32,7 @@ func (c *GeminiImageCore) uploadStream(ctx context.Context, r io.Reader, mimeTyp
 
 // uploadCompressed は画像をJPEGに圧縮してからアップロードします。
 func (c *GeminiImageCore) uploadCompressed(ctx context.Context, r io.Reader, fileURI string) (gemini.UploadedFile, error) {
-	compressed, err := imgutil.CompressToJPEG(r, ImageCompressionQuality)
+	compressed, err := imgutil.CompressToJPEG(r, c.compressionQuality)
 	if err != nil {
 		return gemini.UploadedFile{}, fmt.Errorf("failed to compress image for upload: %w", err)
 	}

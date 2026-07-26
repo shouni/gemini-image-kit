@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
 
 	"github.com/shouni/gemini-image-kit/ports"
 )
@@ -15,7 +14,10 @@ import (
 func TestGeminiGenerator_GenerateSingleImage(t *testing.T) {
 	ctx := context.Background()
 	ai := &mockAIClient{}
-	core, err := NewGeminiImageCore(ai, &mockReader{}, &mockHTTPClient{}, &mockCache{}, time.Hour, false)
+	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+		AIClient: ai, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
+		Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
+	})
 	if err != nil {
 		t.Fatalf("failed to create core: %v", err)
 	}
@@ -50,7 +52,10 @@ func TestGeminiGenerator_GenerateSingleImage(t *testing.T) {
 func TestGeminiGenerator_GenerateFusedImage(t *testing.T) {
 	ctx := context.Background()
 	ai := &mockAIClient{}
-	core, err := NewGeminiImageCore(ai, &mockReader{}, &mockHTTPClient{}, &mockCache{}, time.Hour, false)
+	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+		AIClient: ai, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
+		Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
+	})
 	if err != nil {
 		t.Fatalf("failed to create core: %v", err)
 	}
@@ -83,16 +88,12 @@ func TestGeminiGenerator_GenerateFusedImage(t *testing.T) {
 }
 
 func TestToOptions_PersonGeneration(t *testing.T) {
-	newGenerator := func(t *testing.T, backend genai.Backend) *GeminiGenerator {
+	newGenerator := func(t *testing.T, vertexAI bool) *GeminiGenerator {
 		t.Helper()
-		core, err := NewGeminiImageCore(
-			&mockAIClient{backend: backend},
-			&mockReader{},
-			&mockHTTPClient{},
-			&mockCache{},
-			time.Hour,
-			false,
-		)
+		core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+			AIClient: &mockAIClient{vertexAI: vertexAI}, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
+			Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
+		})
 		if err != nil {
 			t.Fatalf("failed to create core: %v", err)
 		}
@@ -104,7 +105,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	}
 
 	t.Run("Vertex AI: 未指定なら AllowAll", func(t *testing.T) {
-		g := newGenerator(t, genai.BackendVertexAI)
+		g := newGenerator(t, true)
 		opts := g.toOptions(ports.GenerationOptions{})
 		if opts.PersonGeneration != gemini.PersonGenerationAllowAll {
 			t.Errorf("PersonGeneration = %q, want %q", opts.PersonGeneration, gemini.PersonGenerationAllowAll)
@@ -112,7 +113,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	})
 
 	t.Run("Vertex AI: 指定された値を尊重する", func(t *testing.T) {
-		g := newGenerator(t, genai.BackendVertexAI)
+		g := newGenerator(t, true)
 		opts := g.toOptions(ports.GenerationOptions{
 			PersonGeneration: gemini.PersonGenerationDontAllow,
 		})
@@ -122,7 +123,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	})
 
 	t.Run("Gemini API: 指定されていても常に未設定", func(t *testing.T) {
-		g := newGenerator(t, genai.BackendGeminiAPI)
+		g := newGenerator(t, false)
 		opts := g.toOptions(ports.GenerationOptions{
 			PersonGeneration: gemini.PersonGenerationAllowAll,
 		})
@@ -135,14 +136,10 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 func TestGeminiGenerator_GenerateSingleImage_ReturnsImagePreparationError(t *testing.T) {
 	ctx := context.Background()
 	ai := &mockAIClient{}
-	core, err := NewGeminiImageCore(
-		ai,
-		&mockReader{},
-		&mockHTTPClient{err: errors.New("download failed")},
-		&mockCache{},
-		time.Hour,
-		false,
-	)
+	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+		AIClient: ai, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{err: errors.New("download failed")},
+		Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
+	})
 	if err != nil {
 		t.Fatalf("failed to create core: %v", err)
 	}

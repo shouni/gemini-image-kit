@@ -5,14 +5,13 @@ import (
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
 )
 
-// Backend は、利用中のバックエンドサービス（Vertex AIなど）に関する状態や情報を提供するインターフェースです。
-type Backend interface {
-	// IsVertexAI は、Vertex AIを使用しているかを確認します。
-	IsVertexAI() bool
-}
+// Backend は、利用中のバックエンドサービス（Vertex AIなど）に関する状態や情報を提供します。
+//
+// gemini.BackendInspector の別名です。同じ 1 メソッドのインターフェースを 2 か所で定義すると、
+// どちらを実装すればよいかが利用側から曖昧になります。
+type Backend = gemini.BackendInspector
 
 // ImageGenerator は、ビジネスロジック層が利用する統合窓口です。
 type ImageGenerator interface {
@@ -38,9 +37,9 @@ type AssetManager interface {
 // ImageExecutor は、画像生成リクエストを処理し、画像関連データを準備するためのメソッドを定義するインターフェースです。
 type ImageExecutor interface {
 	// ExecuteRequest は、指定されたパラメータで画像生成リクエストを実行し、結果を返します。
-	ExecuteRequest(ctx context.Context, model string, parts []*genai.Part, opts gemini.GenerateOptions) (*ImageResponse, error)
-	// PrepareImagePart は、指定された画像URLから後続処理で利用する画像パーツを作成します。
-	PrepareImagePart(ctx context.Context, rawURL string) (*genai.Part, error)
+	ExecuteRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ImageResponse, error)
+	// PrepareImageAttachment は、指定された画像URLから後続処理で利用する添付を作成します。
+	PrepareImageAttachment(ctx context.Context, rawURL string) (gemini.Attachment, error)
 	Backend
 }
 
