@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
 )
 
 // --- AI Client Mock ---
@@ -21,15 +20,17 @@ type mockAIClient struct {
 	uploadCalled       bool
 	deleteCalled       bool
 	generateCalled     bool
+	lastPrompt         string
+	lastAttachments    []gemini.Attachment
 	lastFileName       string
 	lastUploadMIMEType string
 	lastUploadData     []byte
-	backend            genai.Backend
+	vertexAI           bool
 }
 
 // IsVertexAI を実装
 func (m *mockAIClient) IsVertexAI() bool {
-	return m.backend == genai.BackendVertexAI
+	return m.vertexAI
 }
 
 func (m *mockAIClient) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (gemini.UploadedFile, error) {
@@ -50,28 +51,13 @@ func (m *mockAIClient) DeleteFile(_ context.Context, name string) error {
 	return nil
 }
 
-func (m *mockAIClient) GenerateContent(_ context.Context, _ string, _ string) (*gemini.Response, error) {
-	return nil, nil
-}
-
-func (m *mockAIClient) GenerateWithParts(_ context.Context, _ string, _ []*genai.Part, _ gemini.GenerateOptions) (*gemini.Response, error) {
+func (m *mockAIClient) GenerateWithAttachments(_ context.Context, _ string, prompt string, attachments []gemini.Attachment, _ gemini.GenerateOptions) (*gemini.Response, error) {
 	m.generateCalled = true
+	m.lastPrompt = prompt
+	m.lastAttachments = attachments
 	return &gemini.Response{
-		RawResponse: &genai.GenerateContentResponse{
-			Candidates: []*genai.Candidate{{
-				FinishReason: genai.FinishReasonStop,
-				Content: &genai.Content{
-					Parts: []*genai.Part{
-						{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("fake-image-bytes")}},
-					},
-				},
-			}},
-		},
+		Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("fake-image-bytes")}},
 	}, nil
-}
-
-func (m *mockAIClient) GetFile(_ context.Context, name string) (*genai.File, error) {
-	return &genai.File{Name: name, State: genai.FileStateActive}, nil
 }
 
 // --- Storage Reader Mock ---

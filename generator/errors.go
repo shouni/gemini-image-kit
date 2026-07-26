@@ -11,8 +11,6 @@ var (
 	ErrEmptyPrompt = errors.New("prompt cannot be empty")
 	// ErrUnsupportedFileFormat は、取得したデータが画像として扱えない場合に返されます。
 	ErrUnsupportedFileFormat = errors.New("unsupported file format")
-	// ErrEmptyResponse は、Gemini からのレスポンスが空または不正な場合に返されます。
-	ErrEmptyResponse = errors.New("invalid or empty response from Gemini")
 	// ErrNoImageData は、レスポンスに画像データが含まれていない場合に返されます。
 	ErrNoImageData = errors.New("no image data found in response")
 	// ErrAIClientRequired は、NewGeminiImageCore に aiClient が渡されなかった場合に返されます。

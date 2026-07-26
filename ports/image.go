@@ -4,7 +4,6 @@ package ports
 
 import (
 	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
 )
 
 // ImageURI は画像の参照先情報を保持します。
@@ -52,7 +51,7 @@ type GenerationOptions struct {
 	ThinkingBudget *int32
 	// ThinkingLevel は思考量の段階指定です（MINIMAL / LOW / MEDIUM / HIGH）。
 	// ThinkingBudget と併用した場合はこちらが優先されます。
-	ThinkingLevel genai.ThinkingLevel
+	ThinkingLevel gemini.ThinkingLevel
 }
 
 // SingleImageRequest は単一の参照画像を使う画像生成要求です。
