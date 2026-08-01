@@ -30,7 +30,8 @@
   * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。**この判断はキット側が持つため、呼び出し側でアップロードを組む必要はありません**（`ResolveReference`）。
   * 同一ソースへの同時アップロードは singleflight で1回にまとまります。同じ参照画像を並行して使っても File API 上に重複ファイルを作りません。
 * **☁️ Intelligent MIME Prediction**:
-  * GCS や外部 URI からの参照時、拡張子に基づいて `MIMEType` を自動推測。SDK の `Required` 制約を透過的に解決します。
+  * GCS や外部 URI を参照するときは拡張子から `MIMEType` を推測し、インライン送信するときは実データの内容から判定します。
+  * **推測できない拡張子では `MIMEType` を付けません**（サーバー側のコンテンツ判定に委ねます）。既定値を当てると PNG を JPEG と申告するような誤った型宣言になりうるためです。
 * **🛡️ Fetch Policy Injection**:
   * 外部 URL 取得は `ports.Downloader` 経由に限定。SSRF 対策や許可ドメイン制御は、アプリケーション側で安全な Downloader を注入して適用します。
 * **⚡️ Optimized Image Handling**:
@@ -52,15 +53,27 @@ GenerateSingleImage(ctx, ports.SingleImageRequest)
 GenerateFusedImage(ctx, ports.ImageFusionRequest)
 ```
 
-内部の `GeminiImageCore` は `ports.AssetManager`（File API のアップロード・削除）と `ports.ImageExecutor`（生成実行・参照画像の準備）を担います。参照画像は `gemini.Attachment` として渡され、バイト列でも `gs://` や `files/...` の URI 参照でも同じ型で表現されます。
+生成時の任意設定は `generator.Option` で渡します。
 
 ```go
-// 生成リクエストの実行（プロンプト + 参照画像の添付）
+g, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
+```
+
+内部の `GeminiImageCore` は 3 つのポートを実装します。参照画像は `gemini.Attachment` として渡され、バイト列でも `gs://` や `files/...` の URI 参照でも同じ型で表現されます。
+
+```go
+// ports.ImageExecutor: 生成リクエストの実行（プロンプト + 参照画像の添付）
 ExecuteRequest(ctx, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions)
 
-// URL / GCS から参照画像を取得し、添付へ変換（キャッシュ済みなら URI 参照を返す）
-PrepareImageAttachment(ctx, rawURL string) (gemini.Attachment, error)
+// ports.ReferenceResolver: 参照画像1件を送信できる添付へ解決（下の表の判断はここが持つ）
+ResolveReference(ctx, uri ports.ImageURI) (gemini.Attachment, error)
+
+// ports.AssetManager: File API のライフサイクル（アップロードは同一ソースで1回にまとまる）
+EnsureUploaded(ctx, fileURI string) (string, error)
+DeleteFile(ctx, fileURI string) error
 ```
+
+参照画像を取得せずバイト列だけが欲しい場合は `PrepareImageAttachment(ctx, rawURL)` も公開しています（ポートには含めていません）。
 
 このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
 
@@ -73,6 +86,22 @@ PrepareImageAttachment(ctx, rawURL string) (gemini.Attachment, error)
 ```go
 generator, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
 ```
+
+### 設定 (`generator.GeminiImageCoreConfig`)
+
+| 設定項目 | 役割 | 既定値 |
+| --- | --- | --- |
+| `AIClient` | `gemini.MultimodalModel`（生成・File API・バックエンド判定）。**必須** | - |
+| `Reader` | `gs://` を読む `ports.ContentReader`。**必須** | - |
+| `HTTPClient` | http(s) を読む `ports.Downloader`。**必須** | - |
+| `Cache` | アップロード済みファイルの参照を保持する `ports.ImageCacher`。**必須**（`DeleteFile` がファイル名をここから引くため） | - |
+| `CacheTTL` | 上記キャッシュの有効期間。File API の保持期限より短く設定してください | 0（実装依存） |
+| `Compress` | PNG/GIF を送信前に JPEG へ再圧縮するか | `false` |
+| `CompressionQuality` | `Compress` が true のときの JPEG 品質 | `75`（`DefaultCompressionQuality`） |
+| `UploadTimeout` | アップロード1回あたりの制限時間。共有実行は呼び出し元の context から切り離されるため、これが唯一の打ち切り手段です | `2m`（`DefaultUploadTimeout`） |
+| `InlineReferences` | 参照画像を File API へ上げず常にインライン送信するか（使い捨ての参照向け） | `false` |
+
+必須依存が欠けている場合は `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired` を返します。
 
 ### 参照画像の解決方法
 
@@ -166,7 +195,16 @@ func main() {
        log.Fatal(err)
     }
 }
+```
 
+> 外部 URL を受け取る場合は、`ports.Downloader` 側で許可ドメイン、IP レンジ、タイムアウト、最大サイズなどを制御してください。`http.DefaultClient` は最小例です。
+
+<details>
+<summary>上の例で使っている補助実装（最小のプレースホルダ）</summary>
+
+`Reader` / `HTTPClient` / `Cache` は注入する前提なので、動かすための最小実装を載せます。実運用では SSRF 対策済みの HTTP クライアント、GCS 読み取り、TTL 付きキャッシュ（`go-cache` など）に置き換えてください。`Cache` は参照解決が並行に走るため、**同時アクセス安全な実装**である必要があります。
+
+```go
 type httpDownloader struct {
     client *http.Client
 }
@@ -222,7 +260,7 @@ func (c *memoryCache) Delete(key string) {
 }
 ```
 
-> 外部 URL を受け取る場合は、`ports.Downloader` 側で許可ドメイン、IP レンジ、タイムアウト、最大サイズなどを制御してください。`http.DefaultClient` は最小例です。
+</details>
 
 ### 2. 複数の参照画像を統合して生成する
 
@@ -324,15 +362,20 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 - `ErrFileNotInCache`: File API のファイル名がキャッシュから引けず削除できない場合。
 - `ErrNoImageData`: レスポンスに画像データが含まれていない場合。
 
+コンストラクタの必須依存に対するセンチネルは次のとおりです。
+
+- `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired`: `NewGeminiImageCore` に対応する依存が渡されなかった場合。
+- `ErrExecutorRequired`: `NewGeminiGenerator` に `ports.ImageExecutor` が渡されなかった場合。
+
 ---
 
 ## 📂 パッケージ構成 (Packages)
 
 | パッケージ | 役割 |
 | --- | --- |
-| `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装。`GeminiGenerator`（高レベル API）と `GeminiImageCore`（生成実行・参照画像の準備・File API のライフサイクル管理）。 |
-| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `ImageExecutor` / `AssetManager` / `ImageCacher`、リクエスト・レスポンス型、`ImageURI`。 |
-| `github.com/shouni/gemini-image-kit/imgutil` | 画像ユーティリティ。MIME タイプ判定と送信前の JPEG 圧縮。 |
+| `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装。`GeminiGenerator`（高レベル API）と `GeminiImageCore`（生成実行・参照画像の解決・File API のライフサイクル管理）。 |
+| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `ImageExecutor` / `ReferenceResolver` / `AssetManager` / `ImageCacher` / `ContentReader` / `Downloader`、リクエスト・レスポンス型、`ImageURI`。 |
+| `github.com/shouni/gemini-image-kit/imgutil` | 画像ユーティリティ。`GuessMIMEType`（拡張子から推測、不明なら空文字列）/ `DetectMIMEType`（内容から判定）/ `IsImageMIMEType` / `IsCompressibleMimeType` / `CompressToJPEG`。 |
 
 `generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
 
