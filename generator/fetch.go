@@ -21,7 +21,7 @@ import (
 // 呼び出し側は、読み込み終了後に必ず Close() を呼び出す必要があります。
 func (c *GeminiImageCore) fetchImageData(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	// 1. Cloud Storage の場合
-	if IsGCSURI(rawURL) {
+	if isGCSURI(rawURL) {
 		return c.reader.Open(ctx, rawURL)
 	}
 
@@ -85,8 +85,11 @@ func detectUploadSource(br *bufio.Reader) (string, error) {
 	return detectedMime, nil
 }
 
-// IsGCSURI は、指定されたURIがGCS（Google Cloud Storage）のストレージURIであるかどうかを判定します。
-func IsGCSURI(uri string) bool {
+// isGCSURI は、指定された URI が GCS（Google Cloud Storage）を指すかを判定します。
+//
+// 公開していないのは、これが URI スキームの述語であってこのキットの関心ではないためです。
+// 同じ判定は go-remote-io / go-utils が公開しており、利用側はそちらを使ってください。
+func isGCSURI(uri string) bool {
 	const prefixGCS = "gs://"
 	return strings.HasPrefix(uri, prefixGCS)
 }

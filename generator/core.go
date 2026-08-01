@@ -46,6 +46,16 @@ type GeminiImageCoreConfig struct {
 	HTTPClient ports.Downloader
 	Cache      ports.ImageCacher
 	// CacheTTL はアップロード済みファイルの参照を保持する期間です。
+	//
+	// **0 は補完しません。** 利用側が使っている ttlcache では 0 が `ttlcache.DefaultTTL`
+	// そのもので、「キャッシュ側に設定した既定の有効期間に従う」という意味を持ちます。
+	// ここで既定値を差し込むと、呼び出し側のキャッシュ設定を上書きしてしまいます。
+	// CompressionQuality や UploadTimeout を補完するのは、それらがキット自身が使う値で
+	// あって、委ねる先が無いためです。
+	//
+	// 注意: File API 上のファイルにはサーバー側の保持期限があります。実装側の既定が
+	// 「無期限」や保持期限より長い設定になっていると、失効した files/... の URI を
+	// 参照し続けて生成が失敗します。保持期限より短い値を明示するのが安全です。
 	CacheTTL time.Duration
 	// Compress を true にすると、参照画像を送信前に JPEG へ再圧縮します。
 	Compress bool

@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -53,4 +54,40 @@ func TestNewGeminiImageCore_RequiredDependencies(t *testing.T) {
 			assert.Nil(t, core)
 		})
 	}
+}
+
+// TestCacheTTLIsPassedThroughUnchanged は、CacheTTL に既定値を差し込まないことを固定します。
+// 0 は主要なキャッシュ実装で「キャッシュ側の既定に従う」という意味を持つため、ここで
+// 値を作ると呼び出し側の設定を上書きしてしまいます。
+func TestCacheTTLIsPassedThroughUnchanged(t *testing.T) {
+	for _, ttl := range []time.Duration{0, 90 * time.Minute} {
+		cache := &recordingCache{}
+		core, err := NewGeminiImageCore(GeminiImageCoreConfig{
+			AIClient:   &mockAIClient{},
+			Reader:     &mockReader{},
+			HTTPClient: &mockHTTPClient{data: createPNGData(t)},
+			Cache:      cache,
+			CacheTTL:   ttl,
+		})
+		if err != nil {
+			t.Fatalf("NewGeminiImageCore() error = %v", err)
+		}
+		if _, err := core.EnsureUploaded(context.Background(), "https://example.com/a.png"); err != nil {
+			t.Fatalf("EnsureUploaded() error = %v", err)
+		}
+		if cache.lastTTL != ttl {
+			t.Errorf("TTL passed to the cache = %v, want %v (unchanged)", cache.lastTTL, ttl)
+		}
+	}
+}
+
+// recordingCache は Set に渡された TTL を記録するキャッシュです。
+type recordingCache struct {
+	mockCache
+	lastTTL time.Duration
+}
+
+func (c *recordingCache) Set(key string, value any, ttl time.Duration) {
+	c.lastTTL = ttl
+	c.mockCache.Set(key, value, ttl)
 }

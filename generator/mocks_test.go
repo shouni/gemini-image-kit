@@ -164,7 +164,7 @@ func (s *stubExecutor) ExecuteRequest(_ context.Context, _ string, prompt string
 	return &ports.ImageResponse{
 		Data:     []byte("stub-image"),
 		MimeType: "image/png",
-		UsedSeed: ports.DereferenceSeed(opts.Seed),
+		UsedSeed: dereferenceSeed(opts.Seed),
 	}, nil
 }
 

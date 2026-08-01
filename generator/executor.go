@@ -16,7 +16,7 @@ func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, prom
 		return nil, err
 	}
 
-	return c.parseToResponse(resp, ports.DereferenceSeed(opts.Seed))
+	return c.parseToResponse(resp, dereferenceSeed(opts.Seed))
 }
 
 // parseToResponse は Gemini からのレスポンスから画像データを抽出します。
@@ -41,4 +41,16 @@ func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*p
 	}
 
 	return nil, fmt.Errorf("%w: response contains no inline image", ErrNoImageData)
+}
+
+// dereferenceSeed は *int64 を安全にデリファレンスします。nil は 0 になります。
+//
+// ImageResponse.UsedSeed は「リクエストで指定したシード」で、API はレスポンスに
+// シードを返しません。未指定（nil）のまま生成すると 0 が記録されるため、
+// 再現性が必要なら WithAutoSeed を使ってください。
+func dereferenceSeed(seed *int64) int64 {
+	if seed == nil {
+		return 0
+	}
+	return *seed
 }
