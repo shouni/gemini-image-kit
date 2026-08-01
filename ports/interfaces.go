@@ -44,6 +44,10 @@ type ImageExecutor interface {
 }
 
 // ImageCacher は、画像をキャッシュするためのインターフェースです。
+//
+// 参照画像の解決は複数の画像に対して並行に走るため、実装は同時アクセス安全である
+// 必要があります（github.com/patrickmn/go-cache など、内部でロックする実装を使うか、
+// 自前実装なら自分でロックしてください）。
 type ImageCacher interface {
 	// Get は、指定されたキーに紐づくアイテムを取得します。
 	Get(key string) (any, bool)

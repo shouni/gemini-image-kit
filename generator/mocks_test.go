@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
+
+	"github.com/shouni/gemini-image-kit/ports"
 )
 
 // --- AI Client Mock ---
@@ -121,4 +123,40 @@ func (m *mockCache) Set(key string, value any, _ time.Duration) {
 
 func (m *mockCache) Delete(key string) {
 	delete(m.data, key)
+}
+
+// --- ImageExecutor Mock ---
+
+// stubExecutor は ports.ImageExecutor のテストダブルです。参照画像の解決だけを
+// 差し替えられるので、並行実行や順序の検証をネットワーク無しで行えます。
+type stubExecutor struct {
+	vertexAI bool
+
+	// prepare は PrepareImageAttachment の挙動を差し替えます。nil なら URL を
+	// そのままデータに載せた添付を返します。
+	prepare func(ctx context.Context, rawURL string) (gemini.Attachment, error)
+
+	lastPrompt      string
+	lastAttachments []gemini.Attachment
+	lastOptions     gemini.GenerateOptions
+}
+
+func (s *stubExecutor) IsVertexAI() bool { return s.vertexAI }
+
+func (s *stubExecutor) ExecuteRequest(_ context.Context, _ string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+	s.lastPrompt = prompt
+	s.lastAttachments = attachments
+	s.lastOptions = opts
+	return &ports.ImageResponse{
+		Data:     []byte("stub-image"),
+		MimeType: "image/png",
+		UsedSeed: ports.DereferenceSeed(opts.Seed),
+	}, nil
+}
+
+func (s *stubExecutor) PrepareImageAttachment(ctx context.Context, rawURL string) (gemini.Attachment, error) {
+	if s.prepare != nil {
+		return s.prepare(ctx, rawURL)
+	}
+	return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
 }

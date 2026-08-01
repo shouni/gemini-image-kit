@@ -7,7 +7,8 @@ import (
 )
 
 // GuessMIMEType は拡張子から MIMEType を推測します。
-// 判定できない場合は "image/jpeg" を返します。
+// 判定できない場合は空文字列を返します（誤った型を申告するより、サーバー側の
+// コンテンツ判定に委ねるほうが安全なため）。
 func GuessMIMEType(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
