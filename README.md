@@ -24,9 +24,11 @@
   * `GenerateSingleImage`、`GenerateFusedImage` により、単一参照画像の生成、複数参照画像の統合生成を一貫して管理。
 * **🧩 Image Fusion Workflow**:
   * 複数の参照画像を Gemini の入力パーツとして収集し、プロンプトと組み合わせて1枚の画像を生成。
+  * 参照画像の取得（GCS / HTTP）は**並行実行**。参照が増えても待ち時間が積み上がりません。結果の並び順は入力順のまま保たれます。
 * **🔗 Hybrid Asset Workflow**:
   * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
-  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。
+  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。**この判断はキット側が持つため、呼び出し側でアップロードを組む必要はありません**（`ResolveReference`）。
+  * 同一ソースへの同時アップロードは singleflight で1回にまとまります。同じ参照画像を並行して使っても File API 上に重複ファイルを作りません。
 * **☁️ Intelligent MIME Prediction**:
   * GCS や外部 URI からの参照時、拡張子に基づいて `MIMEType` を自動推測。SDK の `Required` 制約を透過的に解決します。
 * **🛡️ Fetch Policy Injection**:
@@ -36,6 +38,7 @@
   * **Selective Optimization**: PNG/GIF など圧縮対象の画像は JPEG に変換し、変換後の MIMEType も実データに合わせて送信します。
 * **🧬 Robust Design**:
   * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
+  * `WithAutoSeed()` を付けると、シード未指定の生成でも `ImageResponse.UsedSeed` が**実際に使われたシード**を返すため、記録しておけば同じ結果を再現できます。
 
 ---
 
@@ -60,6 +63,37 @@ PrepareImageAttachment(ctx, rawURL string) (gemini.Attachment, error)
 ```
 
 このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
+
+### シードと再現性
+
+`ImageResponse.UsedSeed` は「生成に使われたシード」ですが、**API はレスポンスにシードを返しません**。そのためリクエストで `Seed` を指定しなかった場合、既定では API 側がランダムに選んだ値は知りようがなく、`UsedSeed` は 0 のままになります。これを「使われたシード」として記録すると、再生成時に 0 という別のシードを使うことになります。
+
+`WithAutoSeed()` を付けると、シード未指定のリクエストに対して生成側でシードを決めてから送信するため、`UsedSeed` が常に実際の値を指します。生成結果のランダム性は変わりません（シードを選ぶのが API 側か生成側かの違いです）。
+
+```go
+generator, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
+```
+
+### 参照画像の解決方法
+
+`ImageURI` 1件をどう送るかは、バックエンドと URI の種類でキットが決めます（`ports.ReferenceResolver`）。
+
+| 条件 | 解決方法 |
+| --- | --- |
+| Vertex AI + `gs://` | 転送せず直接参照（最も安い。`FileAPIURI` の指定より優先） |
+| `FileAPIURI` が指定済み | その URI をそのまま参照 |
+| Gemini API | **File API へアップロードして URI 参照**（キャッシュ + singleflight） |
+| Vertex AI + `gs://` 以外 | インライン送信（Vertex AI に File API は無いため） |
+
+Gemini API バックエンドで同じ参照画像を繰り返し使う場合、毎回バイト列を送るより安く済みます。逆に参照画像が毎回異なる使い捨てのワークロードでは、アップロードの往復と File API 上のファイルが無駄になるため、`GeminiImageCoreConfig.InlineReferences: true` で常にインライン送信へ固定できます。
+
+アップロードに失敗した場合は警告ログを出してインライン送信にフォールバックします（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。
+
+File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
+
+### 参照画像の取得は並行
+
+`GenerateFusedImage` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`go-cache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
 
 ---
 
