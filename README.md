@@ -95,7 +95,7 @@ generator, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
 | `Reader` | `gs://` を読む `ports.ContentReader`。**必須** | - |
 | `HTTPClient` | http(s) を読む `ports.Downloader`。**必須** | - |
 | `Cache` | アップロード済みファイルの参照を保持する `ports.ImageCacher`。**必須**（`DeleteFile` がファイル名をここから引くため） | - |
-| `CacheTTL` | 上記キャッシュの有効期間。File API の保持期限より短く設定してください | 0（実装依存） |
+| `CacheTTL` | 上記キャッシュの有効期間。**0 は補完せずそのまま渡します**（`ttlcache` では 0 が `DefaultTTL` そのもので、「キャッシュ側の既定に従う」という意味を持つため）。File API の保持期限より短く設定してください | 実装依存 |
 | `Compress` | PNG/GIF を送信前に JPEG へ再圧縮するか | `false` |
 | `CompressionQuality` | `Compress` が true のときの JPEG 品質 | `75`（`DefaultCompressionQuality`） |
 | `UploadTimeout` | アップロード1回あたりの制限時間。共有実行は呼び出し元の context から切り離されるため、これが唯一の打ち切り手段です | `2m`（`DefaultUploadTimeout`） |
@@ -122,7 +122,7 @@ File API 上のファイルには保持期限があるため、`CacheTTL` はそ
 
 ### 参照画像の取得は並行
 
-`GenerateFusedImage` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`go-cache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
+`GenerateFusedImage` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`ttlcache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
 
 ---
 
@@ -202,7 +202,7 @@ func main() {
 <details>
 <summary>上の例で使っている補助実装（最小のプレースホルダ）</summary>
 
-`Reader` / `HTTPClient` / `Cache` は注入する前提なので、動かすための最小実装を載せます。実運用では SSRF 対策済みの HTTP クライアント、GCS 読み取り、TTL 付きキャッシュ（`go-cache` など）に置き換えてください。`Cache` は参照解決が並行に走るため、**同時アクセス安全な実装**である必要があります。
+`Reader` / `HTTPClient` / `Cache` は注入する前提なので、動かすための最小実装を載せます。実運用では SSRF 対策済みの HTTP クライアント、GCS 読み取り、TTL 付きキャッシュ（`ttlcache` など）に置き換えてください。`Cache` は参照解決が並行に走るため、**同時アクセス安全な実装**である必要があります。
 
 ```go
 type httpDownloader struct {

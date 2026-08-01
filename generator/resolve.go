@@ -28,7 +28,7 @@ import (
 // 3 を行わず、常にインライン送信します。
 func (c *GeminiImageCore) ResolveReference(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
 	// Vertex AI の gs:// 参照は、FileAPIURI の指定より優先する。転送が一切発生しないため。
-	if c.IsVertexAI() && IsGCSURI(uri.ReferenceURL) {
+	if c.IsVertexAI() && isGCSURI(uri.ReferenceURL) {
 		return fileAttachment(uri.ReferenceURL, uri.ReferenceURL), nil
 	}
 	if uri.FileAPIURI != "" {
