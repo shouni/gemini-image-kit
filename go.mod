@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/shouni/go-gemini-client v1.16.4
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/sync v0.22.0
 )
 
 require (
@@ -31,7 +32,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/genai v1.66.0 // indirect
