@@ -6,8 +6,6 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-const negativePromptSeparator = "\n\n[Negative Prompt]\n"
-
 // GeminiGenerator は高レベルな画像生成ロジックを担当します。
 type GeminiGenerator struct {
 	core     ports.ImageExecutor
@@ -72,4 +70,30 @@ func (g *GeminiGenerator) GenerateFusedImage(ctx context.Context, req ports.Imag
 		req.GenerationOptions,
 		req.Images,
 	)
+}
+
+// generate は画像生成のコアロジックです。
+func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOptions, uris []ports.ImageURI) (*ports.ImageResponse, error) {
+	if req.Model == "" {
+		return nil, ErrModelRequired
+	}
+	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
+	if finalPrompt == "" {
+		return nil, ErrEmptyPrompt
+	}
+	// シードを生成側で決めるのは送信前の1回だけ。ExecuteRequest は opts.Seed を
+	// そのまま UsedSeed として返すため、ここで埋めた値が呼び出し側に届く。
+	if g.autoSeed && req.Seed == nil {
+		req.Seed = newSeed()
+	}
+
+	// 1. 画像アセット（素材）を収集
+	attachments, err := g.collectImageAttachments(ctx, uris)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. ImageSize を含めたオプション構築
+	opts := g.toOptions(req)
+	return g.core.ExecuteRequest(ctx, req.Model, finalPrompt, attachments, opts)
 }

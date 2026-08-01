@@ -27,7 +27,8 @@
   * 参照画像の取得（GCS / HTTP）は**並行実行**。参照が増えても待ち時間が積み上がりません。結果の並び順は入力順のまま保たれます。
 * **🔗 Hybrid Asset Workflow**:
   * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
-  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。
+  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。**この判断はキット側が持つため、呼び出し側でアップロードを組む必要はありません**（`ResolveReference`）。
+  * 同一ソースへの同時アップロードは singleflight で1回にまとまります。同じ参照画像を並行して使っても File API 上に重複ファイルを作りません。
 * **☁️ Intelligent MIME Prediction**:
   * GCS や外部 URI からの参照時、拡張子に基づいて `MIMEType` を自動推測。SDK の `Required` 制約を透過的に解決します。
 * **🛡️ Fetch Policy Injection**:
@@ -72,6 +73,23 @@ PrepareImageAttachment(ctx, rawURL string) (gemini.Attachment, error)
 ```go
 generator, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
 ```
+
+### 参照画像の解決方法
+
+`ImageURI` 1件をどう送るかは、バックエンドと URI の種類でキットが決めます（`ports.ReferenceResolver`）。
+
+| 条件 | 解決方法 |
+| --- | --- |
+| Vertex AI + `gs://` | 転送せず直接参照（最も安い。`FileAPIURI` の指定より優先） |
+| `FileAPIURI` が指定済み | その URI をそのまま参照 |
+| Gemini API | **File API へアップロードして URI 参照**（キャッシュ + singleflight） |
+| Vertex AI + `gs://` 以外 | インライン送信（Vertex AI に File API は無いため） |
+
+Gemini API バックエンドで同じ参照画像を繰り返し使う場合、毎回バイト列を送るより安く済みます。逆に参照画像が毎回異なる使い捨てのワークロードでは、アップロードの往復と File API 上のファイルが無駄になるため、`GeminiImageCoreConfig.InlineReferences: true` で常にインライン送信へ固定できます。
+
+アップロードに失敗した場合は警告ログを出してインライン送信にフォールバックします（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。
+
+File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
 
 ### 参照画像の取得は並行
 

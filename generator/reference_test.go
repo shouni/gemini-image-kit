@@ -31,7 +31,7 @@ func TestCollectImageAttachmentsPreservesOrder(t *testing.T) {
 	// 後ろの画像ほど速く返るようにして、完了順と入力順をずらす。
 	delays := map[string]time.Duration{"a": 30 * time.Millisecond, "b": 15 * time.Millisecond, "c": 0}
 	stub := &stubExecutor{
-		prepare: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
+		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
 			time.Sleep(delays[rawURL])
 			return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
 		},
@@ -65,7 +65,7 @@ func TestCollectImageAttachmentsRunsConcurrently(t *testing.T) {
 		barrier = make(chan struct{})
 	)
 	stub := &stubExecutor{
-		prepare: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
+		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
 			mu.Lock()
 			entered++
 			reached := entered == refs
@@ -101,7 +101,7 @@ func TestCollectImageAttachmentsReportsFirstErrorByIndex(t *testing.T) {
 	first := errors.New("first reference failed")
 	second := errors.New("second reference failed")
 	stub := &stubExecutor{
-		prepare: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
+		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
 			switch rawURL {
 			case "b":
 				time.Sleep(20 * time.Millisecond) // 後から失敗させる
@@ -128,7 +128,7 @@ func TestCollectImageAttachmentsReportsFirstErrorByIndex(t *testing.T) {
 // 打ち切り理由としてそのまま返ることを確認します。
 func TestCollectImageAttachmentsPropagatesCancellation(t *testing.T) {
 	stub := &stubExecutor{
-		prepare: func(ctx context.Context, _ string) (gemini.Attachment, error) {
+		resolve: func(ctx context.Context, _ string) (gemini.Attachment, error) {
 			<-ctx.Done()
 			return gemini.Attachment{}, ctx.Err()
 		},
@@ -213,5 +213,84 @@ func TestWithoutAutoSeedLeavesSeedUnset(t *testing.T) {
 	}
 	if stub.lastOptions.Seed != nil {
 		t.Errorf("Seed = %d, want no seed without WithAutoSeed", *stub.lastOptions.Seed)
+	}
+}
+
+func TestCollectImageParts(t *testing.T) {
+	ctx := context.Background()
+
+	// 1. モックのセットアップ
+	// Vertex AI モードをシミュレートするモック
+	mockAI := &mockAIClient{vertexAI: true}
+
+	// GeminiImageCore の初期化 (reader や httpClient は nil でもこのテスト範囲なら動きますが、
+	// 本来は mockReader 等を渡すのが安全です)
+	core, _ := NewGeminiImageCore(GeminiImageCoreConfig{
+		AIClient: mockAI, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
+		Cache: &mockCache{}, CacheTTL: 0, Compress: true,
+	})
+
+	g := &GeminiGenerator{
+		core: core,
+	}
+
+	tests := []struct {
+		name     string
+		isVertex bool
+		uris     []ports.ImageURI
+		verify   func(t *testing.T, attachments []gemini.Attachment)
+	}{
+		{
+			name:     "Vertex AI モードで GCS URI を処理",
+			isVertex: true,
+			uris: []ports.ImageURI{
+				{ReferenceURL: "gs://my-bucket/char.png"},
+			},
+			verify: func(t *testing.T, attachments []gemini.Attachment) {
+				if len(attachments) != 1 {
+					t.Fatalf("添付が生成されていません")
+				}
+				got := attachments[0]
+				if got.URI != "gs://my-bucket/char.png" || got.MIMEType != "image/png" {
+					t.Errorf("GCSパスが正しくセットされていません: %+v", got)
+				}
+			},
+		},
+		{
+			name:     "Gemini API モードで FileAPIURI を優先",
+			isVertex: false,
+			uris: []ports.ImageURI{
+				{
+					ReferenceURL: "https://example.com/ignore.jpg",
+					FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/abc-123",
+				},
+			},
+			verify: func(t *testing.T, attachments []gemini.Attachment) {
+				if len(attachments) != 1 {
+					t.Fatalf("添付が生成されていません")
+				}
+				if got := attachments[0].URI; got != "https://generativelanguage.googleapis.com/v1beta/files/abc-123" {
+					t.Errorf("FileAPIURI が優先されていません: %s", got)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// テストケースごとに独立したモックとジェネレータを初期化
+			mockAI = &mockAIClient{vertexAI: tt.isVertex}
+			core, _ = NewGeminiImageCore(GeminiImageCoreConfig{
+				AIClient: mockAI, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
+				Cache: &mockCache{}, CacheTTL: 0, Compress: true,
+			})
+			g = &GeminiGenerator{core: core}
+
+			attachments, err := g.collectImageAttachments(ctx, tt.uris)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			tt.verify(t, attachments)
+		})
 	}
 }

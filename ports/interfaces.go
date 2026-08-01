@@ -34,12 +34,20 @@ type AssetManager interface {
 	DeleteFile(ctx context.Context, fileURI string) error
 }
 
-// ImageExecutor は、画像生成リクエストを処理し、画像関連データを準備するためのメソッドを定義するインターフェースです。
+// ReferenceResolver は、参照画像1件を送信できる添付へ解決します。
+//
+// 「どう解決するか」——バックエンドと URI の種類から、直接参照・File API へのアップロード・
+// インライン送信のどれを選ぶか——はこのインターフェースの実装が決めます。リクエストを
+// 組み立てる側がバックエンドの都合を知らずに済むよう、ExecuteRequest とは分けています。
+type ReferenceResolver interface {
+	ResolveReference(ctx context.Context, uri ImageURI) (gemini.Attachment, error)
+}
+
+// ImageExecutor は、画像生成リクエストの実行と参照画像の解決を担うインターフェースです。
 type ImageExecutor interface {
 	// ExecuteRequest は、指定されたパラメータで画像生成リクエストを実行し、結果を返します。
 	ExecuteRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ImageResponse, error)
-	// PrepareImageAttachment は、指定された画像URLから後続処理で利用する添付を作成します。
-	PrepareImageAttachment(ctx context.Context, rawURL string) (gemini.Attachment, error)
+	ReferenceResolver
 	Backend
 }
 

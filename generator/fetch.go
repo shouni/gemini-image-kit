@@ -12,8 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/shouni/gemini-image-kit/imgutil"
 	"github.com/shouni/go-gemini-client/gemini"
+
+	"github.com/shouni/gemini-image-kit/imgutil"
 )
 
 // fetchImageData は、指定されたURLまたはCloud Storageから画像データ読み込み用の Reader を返します。
@@ -65,41 +66,6 @@ func uploadDisplayName(rawURI string) string {
 // shouldCompress は、指定された MIMEType の画像を圧縮すべきかを判定します。
 func (c *GeminiImageCore) shouldCompress(mimeType string) bool {
 	return c.compress && imgutil.IsCompressibleMimeType(mimeType)
-}
-
-// cachedFile は File API 上のファイル参照です。
-//
-// URI と Name を1エントリにまとめて保存します。別々のキーに分けると、
-// 片方だけが失効したときに「生成には使えるが削除できない」中途半端な状態が
-// 生まれるためです（DeleteFile は Name に依存します）。
-type cachedFile struct {
-	URI  string
-	Name string
-}
-
-// lookupCache は、ソース URI に紐づくキャッシュエントリを取得します。
-// 旧形式（文字列を個別キーに保存）のエントリは型アサーションに失敗して
-// ミス扱いになるため、キャッシュ形式の変更は安全に無視されます。
-func (c *GeminiImageCore) lookupCache(sourceURI string) (cachedFile, bool) {
-	val, ok := c.cache.Get(cacheKeyFileAPI + sourceURI)
-	if !ok {
-		return cachedFile{}, false
-	}
-	entry, ok := val.(cachedFile)
-	if !ok || entry.URI == "" {
-		return cachedFile{}, false
-	}
-	return entry, true
-}
-
-// storeCache は、ソース URI に紐づくキャッシュエントリを保存します。
-func (c *GeminiImageCore) storeCache(sourceURI string, entry cachedFile) {
-	c.cache.Set(cacheKeyFileAPI+sourceURI, entry, c.expiration)
-}
-
-// removeFromCache は、指定されたソース URI に紐づくキャッシュエントリを削除します。
-func (c *GeminiImageCore) removeFromCache(sourceURI string) {
-	c.cache.Delete(cacheKeyFileAPI + sourceURI)
 }
 
 // detectUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証し、MIMETypeを返します。
