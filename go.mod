@@ -3,7 +3,7 @@ module github.com/shouni/gemini-image-kit
 go 1.26
 
 require (
-	github.com/shouni/go-gemini-client v1.16.4
+	github.com/shouni/go-gemini-client v1.16.5
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.22.0
 )
@@ -34,7 +34,7 @@ require (
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
-	google.golang.org/genai v1.66.0 // indirect
+	google.golang.org/genai v1.67.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
