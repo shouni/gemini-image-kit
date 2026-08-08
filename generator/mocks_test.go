@@ -137,6 +137,7 @@ func (m *mockCache) Set(key string, value any, _ time.Duration) {
 
 // stubExecutor は imageExecutor のテストダブルです。参照画像の解決だけを
 // 差し替えられるので、並行実行や順序の検証をネットワーク無しで行えます。
+// GenerateBatch は並行に呼び出すため、記録フィールドは mu で保護します（-race 対策）。
 type stubExecutor struct {
 	vertexAI bool
 
@@ -144,6 +145,7 @@ type stubExecutor struct {
 	// 載せた添付を返します。
 	resolve func(ctx context.Context, rawURL string) (gemini.Attachment, error)
 
+	mu              sync.Mutex
 	lastPrompt      string
 	lastAttachments []gemini.Attachment
 	lastOptions     gemini.GenerateOptions
@@ -152,9 +154,11 @@ type stubExecutor struct {
 func (s *stubExecutor) IsVertexAI() bool { return s.vertexAI }
 
 func (s *stubExecutor) executeRequest(_ context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+	s.mu.Lock()
 	s.lastPrompt = prompt
 	s.lastAttachments = attachments
 	s.lastOptions = opts
+	s.mu.Unlock()
 	return &ports.ImageResponse{
 		Data:     []byte("stub-image"),
 		MimeType: "image/png",

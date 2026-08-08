@@ -30,8 +30,8 @@ func TestGenerationOptionsPromotesGeminiFields(t *testing.T) {
 	}
 
 	req.ImageSize = "1K" // 昇格フィールドへの書き込み
-	if req.GenerateOptions.ImageSize != "1K" {
-		t.Errorf("write through promotion failed: %q", req.GenerateOptions.ImageSize)
+	if got := req.GenerateOptions; got.ImageSize != "1K" {
+		t.Errorf("write through promotion failed: %q", got.ImageSize)
 	}
 }
 

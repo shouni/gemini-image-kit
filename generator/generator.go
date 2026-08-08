@@ -153,7 +153,7 @@ func (g *GeminiGenerator) GenerateBatch(ctx context.Context, reqs []ports.ImageR
 			defer func() { <-sem }()
 
 			// 呼び出し側の context が終了していたら新しい生成は始めない
-			//（進行中のものはそれぞれの ctx で打ち切られる）。
+			// （進行中のものはそれぞれの ctx で打ち切られる）。
 			if err := ctx.Err(); err != nil {
 				errs[i] = err
 				return
