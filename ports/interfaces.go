@@ -3,64 +3,38 @@ package ports
 import (
 	"context"
 	"time"
-
-	"github.com/shouni/go-gemini-client/gemini"
 )
 
-// Backend は、利用中のバックエンドサービス（Vertex AIなど）に関する状態や情報を提供します。
+// ImageGenerator は、ビジネスロジック層が利用する画像生成の窓口です。
 //
-// gemini.BackendInspector の別名です。同じ 1 メソッドのインターフェースを 2 か所で定義すると、
-// どちらを実装すればよいかが利用側から曖昧になります。
-type Backend = gemini.BackendInspector
-
-// ImageGenerator は、ビジネスロジック層が利用する統合窓口です。
+// 意図的に 1 メソッドです。以前はバックエンド判定（IsVertexAI）を埋め込んでいた
+// ため、テスト用フェイクを書く利用側が全員それも実装させられ、結局どの下流も
+// 自前の 1 メソッドインターフェースを宣言していました。バックエンド判定が必要な
+// 場合は gemini.BackendInspector に別途依存してください。
 type ImageGenerator interface {
-	// GenerateSingleImage は、単一の参照画像と構成パラメータに基づいて画像を生成します。
-	GenerateSingleImage(ctx context.Context, req SingleImageRequest) (*ImageResponse, error)
-	// GenerateFusedImage は、複数の参照画像と構成パラメータに基づいて1枚の画像を生成します。
-	GenerateFusedImage(ctx context.Context, req ImageFusionRequest) (*ImageResponse, error)
-	Backend
+	// Generate は、参照画像（0〜複数）と構成パラメータに基づいて 1 枚の画像を生成します。
+	Generate(ctx context.Context, req ImageRequest) (*ImageResponse, error)
 }
 
-// AssetManager は、File APIとのやり取りを担当します。
-type AssetManager interface {
-	// EnsureUploaded は指定された fileURI の画像を Gemini File API にアップロードし、
-	// アップロード先の URI を返します。すでにアップロード済みならキャッシュの URI を返します。
-	//
-	// gemini.FileManager.UploadFile（io.Reader を受け取る低レベル API）とは
-	// 役割が異なるため、名前を分けています。
-	EnsureUploaded(ctx context.Context, fileURI string) (string, error)
-	// DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
-	DeleteFile(ctx context.Context, fileURI string) error
-}
-
-// ReferenceResolver は、参照画像1件を送信できる添付へ解決します。
+// BatchImageGenerator は、複数リクエストの一括生成を行う窓口です。
 //
-// 「どう解決するか」——バックエンドと URI の種類から、直接参照・File API へのアップロード・
-// インライン送信のどれを選ぶか——はこのインターフェースの実装が決めます。リクエストを
-// 組み立てる側がバックエンドの都合を知らずに済むよう、ExecuteRequest とは分けています。
-type ReferenceResolver interface {
-	ResolveReference(ctx context.Context, uri ImageURI) (gemini.Attachment, error)
+// 実装（generator.GeminiGenerator）はレート制限・並列度・リクエストタイムアウトを
+// 内蔵しているため、利用側で errgroup + rate.Limiter を組む必要はありません。
+type BatchImageGenerator interface {
+	ImageGenerator
+	// GenerateBatch は複数のリクエストを設定された並列度・レート制限の下で実行し、
+	// 入力と同じ順序で結果を返します。一部が失敗しても成功した結果は破棄されず、
+	// 失敗した位置の要素だけが nil になります（エラーは errors.Join で集約されます）。
+	GenerateBatch(ctx context.Context, reqs []ImageRequest) ([]*ImageResponse, error)
 }
 
-// ImageExecutor は、画像生成リクエストの実行と参照画像の解決を担うインターフェースです。
-type ImageExecutor interface {
-	// ExecuteRequest は、指定されたパラメータで画像生成リクエストを実行し、結果を返します。
-	ExecuteRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ImageResponse, error)
-	ReferenceResolver
-	Backend
-}
-
-// ImageCacher は、画像をキャッシュするためのインターフェースです。
+// ImageCacher は、アップロード済み参照のキャッシュを提供するインターフェースです。
 //
 // 参照画像の解決は複数の画像に対して並行に走るため、実装は同時アクセス安全である
-// 必要があります（github.com/patrickmn/go-cache など、内部でロックする実装を使うか、
-// 自前実装なら自分でロックしてください）。
+// 必要があります（内部でロックする実装を使うか、自前実装なら自分でロックしてください）。
 type ImageCacher interface {
 	// Get は、指定されたキーに紐づくアイテムを取得します。
 	Get(key string) (any, bool)
 	// Set は、指定されたキーと値、有効期限でアイテムを保存します。
 	Set(key string, value any, d time.Duration)
-	// Delete は、指定されたキーに紐づくアイテムを削除します。存在しないキーは無視します。
-	Delete(key string)
 }

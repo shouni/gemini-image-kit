@@ -25,7 +25,7 @@ func TestNewGeminiImageCore_RequiredDependencies(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		ai      gemini.MultimodalModel
+		ai      gemini.Model
 		reader  ports.ContentReader
 		http    ports.Downloader
 		cache   ports.ImageCacher
@@ -72,7 +72,7 @@ func TestCacheTTLIsPassedThroughUnchanged(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewGeminiImageCore() error = %v", err)
 		}
-		if _, err := core.EnsureUploaded(context.Background(), "https://example.com/a.png"); err != nil {
+		if _, err := core.ensureUploaded(context.Background(), "https://example.com/a.png"); err != nil {
 			t.Fatalf("EnsureUploaded() error = %v", err)
 		}
 		if cache.lastTTL != ttl {

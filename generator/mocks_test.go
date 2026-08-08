@@ -133,16 +133,11 @@ func (m *mockCache) Set(key string, value any, _ time.Duration) {
 	m.data[key] = value
 }
 
-func (m *mockCache) Delete(key string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.data, key)
-}
-
 // --- ImageExecutor Mock ---
 
-// stubExecutor は ports.ImageExecutor のテストダブルです。参照画像の解決だけを
+// stubExecutor は imageExecutor のテストダブルです。参照画像の解決だけを
 // 差し替えられるので、並行実行や順序の検証をネットワーク無しで行えます。
+// GenerateBatch は並行に呼び出すため、記録フィールドは mu で保護します（-race 対策）。
 type stubExecutor struct {
 	vertexAI bool
 
@@ -150,6 +145,7 @@ type stubExecutor struct {
 	// 載せた添付を返します。
 	resolve func(ctx context.Context, rawURL string) (gemini.Attachment, error)
 
+	mu              sync.Mutex
 	lastPrompt      string
 	lastAttachments []gemini.Attachment
 	lastOptions     gemini.GenerateOptions
@@ -157,18 +153,34 @@ type stubExecutor struct {
 
 func (s *stubExecutor) IsVertexAI() bool { return s.vertexAI }
 
-func (s *stubExecutor) ExecuteRequest(_ context.Context, _ string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+func (s *stubExecutor) executeRequest(_ context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+	s.mu.Lock()
 	s.lastPrompt = prompt
 	s.lastAttachments = attachments
 	s.lastOptions = opts
+	s.mu.Unlock()
 	return &ports.ImageResponse{
 		Data:     []byte("stub-image"),
 		MimeType: "image/png",
 		UsedSeed: dereferenceSeed(opts.Seed),
+		Model:    model,
+		Prompt:   prompt,
 	}, nil
 }
 
-func (s *stubExecutor) ResolveReference(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
+// newStubGenerator は、実行層をスタブに差し替えた GeminiGenerator を組み立てます。
+// 公開コンストラクタは *GeminiImageCore を要求するため、テストはここを通します。
+func newStubGenerator(stub *stubExecutor, opts ...Option) *GeminiGenerator {
+	g := &GeminiGenerator{core: stub, autoSeed: true, maxConcurrency: 1}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(g)
+		}
+	}
+	return g
+}
+
+func (s *stubExecutor) resolveReference(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
 	if uri.IsEmpty() {
 		return gemini.Attachment{}, nil
 	}

@@ -18,50 +18,30 @@ func (uri ImageURI) IsEmpty() bool {
 }
 
 // GenerationOptions は画像生成時の共通設定パラメータを保持します。
+//
+// gemini.GenerateOptions を埋め込んでいるため、SystemPrompt / AspectRatio /
+// ImageSize / Seed / Temperature などの生成パラメータはフィールド昇格でそのまま
+// 設定できます。以前はここに 10 個のフィールドを写し取っていましたが、
+// go-gemini-client 側にフィールドが増えるたびに 2 ファイルの同期が必要になるため、
+// 埋め込みに変更しました。
+//
+// SafetySettings と PersonGeneration は、未指定の場合のみバックエンドに応じた
+// 既定値（安全フィルタ無効・人物生成許可）が補われます。呼び出し側が明示した
+// 値は上書きされません。
 type GenerationOptions struct {
 	Model          string
 	Prompt         string
-	SystemPrompt   string
 	NegativePrompt string
-	AspectRatio    string
-	ImageSize      string
-	Seed           *int64
-	// PersonGeneration は人物生成の許可ポリシーです。
-	// Vertex AI バックエンドでのみ適用され、未指定時は PersonGenerationAllowAll になります。
-	// Gemini API バックエンドではこのフィールドを設定すると API エラーになるため、常に無視されます。
-	PersonGeneration gemini.PersonGeneration
 
-	// 以下は gemini.GenerateOptions へそのまま渡される生成パラメータです。
-	// ゼロ値が意味を持つ項目はポインタで、nil は「SDK のデフォルトに委ねる」を意味します。
-	// 設定には gemini.Ptr ヘルパーが使えます。
-	//
-	// これらは Gemini API 上で非推奨ではありませんが、画像生成モデルが
-	// どこまで解釈するかはモデル依存です（テキスト生成向けのパラメータのため、
-	// 無視される場合があります）。
-
-	// Temperature は出力のランダム性です。nil で SDK デフォルト。
-	Temperature *float32
-	// TopP は核サンプリングの閾値です。nil で SDK デフォルト。
-	TopP *float32
-	// MaxOutputTokens は生成する最大トークン数です。0 で SDK デフォルト。
-	MaxOutputTokens int32
-	// ThinkingBudget は思考トークンの上限です。
-	// gemini.Ptr[int32](0) で思考を無効化し、レイテンシとコストを抑えられます。
-	// 有効範囲はモデル依存のため、モデルを跨ぐ場合は ThinkingLevel を推奨します。
-	ThinkingBudget *int32
-	// ThinkingLevel は思考量の段階指定です（MINIMAL / LOW / MEDIUM / HIGH）。
-	// ThinkingBudget と併用した場合はこちらが優先されます。
-	ThinkingLevel gemini.ThinkingLevel
+	gemini.GenerateOptions
 }
 
-// SingleImageRequest は単一の参照画像を使う画像生成要求です。
-type SingleImageRequest struct {
-	GenerationOptions
-	Image ImageURI
-}
-
-// ImageFusionRequest は複数の参照画像を統合して1枚の画像を生成する要求です。
-type ImageFusionRequest struct {
+// ImageRequest は画像生成 1 回分の要求です。
+//
+// Images が 1 枚なら参照付きの単発生成、複数なら参照画像を統合した融合生成、
+// 空ならテキストのみの生成になります。以前は単発と融合で型とメソッドが分かれて
+// いましたが、実装は完全に同一経路だったため 1 つに統合しました。
+type ImageRequest struct {
 	GenerationOptions
 	Images []ImageURI
 }
@@ -70,5 +50,14 @@ type ImageFusionRequest struct {
 type ImageResponse struct {
 	Data     []byte
 	MimeType string
+	// UsedSeed はリクエストで指定した（または自動採番された）シードです。
+	// API はレスポンスにシードを返さないため、これは送信値の記録です。
 	UsedSeed int64
+	// Model は生成に使ったモデル名です。コスト集計やメタデータ保存のために、
+	// 呼び出し側がリクエストから別途持ち回らずに済むよう応答へ含めます。
+	Model string
+	// Prompt は実際に送信した最終プロンプト（ネガティブプロンプト結合済み）です。
+	Prompt string
+	// Usage はトークン使用量です。モデルが返さない場合は nil です。
+	Usage *gemini.TokenUsage
 }

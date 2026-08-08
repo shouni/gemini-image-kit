@@ -32,28 +32,27 @@ func buildFinalPrompt(prompt, negative string) string {
 }
 
 // toOptions は Gemini へのリクエストオプションを構築します。
+//
+// GenerationOptions は gemini.GenerateOptions を埋め込んでいるため、ここでの仕事は
+// 呼び出し側が未指定の項目にバックエンド既定を補うことだけです。呼び出し側が明示
+// した SafetySettings / PersonGeneration は尊重します（以前は無条件に上書きしており、
+// 利用側が安全フィルタを厳しくする手段がありませんでした）。
 func (g *GeminiGenerator) toOptions(req ports.GenerationOptions) gemini.GenerateOptions {
+	opts := req.GenerateOptions
 	isVertex := g.core.IsVertexAI()
-	opts := gemini.GenerateOptions{
-		AspectRatio:     req.AspectRatio,
-		ImageSize:       req.ImageSize,
-		SystemPrompt:    req.SystemPrompt,
-		Seed:            req.Seed,
-		SafetySettings:  gemini.NewSafetySettings(safetyThreshold(isVertex)),
-		Temperature:     req.Temperature,
-		TopP:            req.TopP,
-		MaxOutputTokens: req.MaxOutputTokens,
-		ThinkingBudget:  req.ThinkingBudget,
-		ThinkingLevel:   req.ThinkingLevel,
+
+	if opts.SafetySettings == nil {
+		opts.SafetySettings = gemini.NewSafetySettings(safetyThreshold(isVertex))
 	}
 
-	// Vertex AI の場合のみ PersonGeneration を設定する
-	// Gemini API (Google AI) ではこのフィールドが含まれると致命的エラーになるため
 	if isVertex {
-		opts.PersonGeneration = gemini.PersonGenerationAllowAll
-		if req.PersonGeneration != gemini.PersonGenerationUnspecified {
-			opts.PersonGeneration = req.PersonGeneration
+		// キャラクター生成が主用途のため、未指定時は人物生成を許可する。
+		if opts.PersonGeneration == gemini.PersonGenerationUnspecified {
+			opts.PersonGeneration = gemini.PersonGenerationAllowAll
 		}
+	} else {
+		// Gemini API (Google AI) バックエンドは PersonGeneration 未対応のため送らない。
+		opts.PersonGeneration = gemini.PersonGenerationUnspecified
 	}
 
 	return opts
@@ -68,7 +67,7 @@ func safetyThreshold(isVertex bool) gemini.SafetyThreshold {
 	return gemini.SafetyOff
 }
 
-// newSeed は WithAutoSeed 用の乱数シードを返します。
+// newSeed は自動シード採番用の乱数シードを返します。
 //
 // go-gemini-client が int32 の範囲外を弾く（ErrInvalidSeed）ため、範囲内に収めます。
 func newSeed() *int64 {

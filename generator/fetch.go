@@ -14,7 +14,7 @@ import (
 
 	"github.com/shouni/go-gemini-client/gemini"
 
-	"github.com/shouni/gemini-image-kit/imgutil"
+	"github.com/shouni/gemini-image-kit/internal/imgutil"
 )
 
 // fetchImageData は、指定されたURLまたはCloud Storageから画像データ読み込み用の Reader を返します。

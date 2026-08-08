@@ -3,26 +3,26 @@ package generator
 import "errors"
 
 var (
-	// ErrFileNotInCache は、File API 上のファイル名がキャッシュから引けず削除できない場合に返されます。
-	ErrFileNotInCache = errors.New("cannot determine file name for deletion, file not found in cache")
 	// ErrModelRequired は、生成リクエストにモデル名が指定されていない場合に返されます。
-	ErrModelRequired = errors.New("model is required")
+	ErrModelRequired = errors.New("imagekit: model is required")
 	// ErrEmptyPrompt は、プロンプト（ネガティブプロンプト含む）が空の場合に返されます。
-	ErrEmptyPrompt = errors.New("prompt cannot be empty")
+	ErrEmptyPrompt = errors.New("imagekit: prompt cannot be empty")
 	// ErrUnsupportedFileFormat は、取得したデータが画像として扱えない場合に返されます。
-	ErrUnsupportedFileFormat = errors.New("unsupported file format")
+	ErrUnsupportedFileFormat = errors.New("imagekit: unsupported file format")
+	// ErrReferenceTooLarge は、参照画像が MaxReferenceBytes を超えている場合に返されます。
+	ErrReferenceTooLarge = errors.New("imagekit: reference image too large")
 	// ErrNoImageData は、レスポンスに画像データが含まれていない場合に返されます。
-	ErrNoImageData = errors.New("no image data found in response")
-	// ErrAIClientRequired は、NewGeminiImageCore に aiClient が渡されなかった場合に返されます。
-	ErrAIClientRequired = errors.New("aiClient is required")
-	// ErrReaderRequired は、NewGeminiImageCore に reader が渡されなかった場合に返されます。
-	ErrReaderRequired = errors.New("reader is required")
-	// ErrHTTPClientRequired は、NewGeminiImageCore に httpClient が渡されなかった場合に返されます。
-	ErrHTTPClientRequired = errors.New("httpClient is required")
-	// ErrCacheRequired は、NewGeminiImageCore に cache が渡されなかった場合に返されます。
-	// DeleteFile は File API 上のファイル名をキャッシュから引くため、
-	// cache なしでは削除が一切できずサーバー側にファイルが残り続けます。
-	ErrCacheRequired = errors.New("cache is required")
-	// ErrExecutorRequired は、NewGeminiGenerator に core (ImageExecutor) が渡されなかった場合に返されます。
-	ErrExecutorRequired = errors.New("core (ImageExecutor) is required")
+	ErrNoImageData = errors.New("imagekit: no image data found in response")
+	// ErrAIClientRequired は、NewGeminiImageCore に AIClient が渡されなかった場合に返されます。
+	ErrAIClientRequired = errors.New("imagekit: AIClient is required")
+	// ErrReaderRequired は、NewGeminiImageCore に Reader が渡されなかった場合に返されます。
+	ErrReaderRequired = errors.New("imagekit: Reader is required")
+	// ErrHTTPClientRequired は、NewGeminiImageCore に HTTPClient が渡されなかった場合に返されます。
+	ErrHTTPClientRequired = errors.New("imagekit: HTTPClient is required")
+	// ErrCacheRequired は、NewGeminiImageCore に Cache が渡されなかった場合に返されます。
+	// アップロード済み参照の使い回しがこのキットの主要なコスト最適化であり、
+	// キャッシュ無しでは同じ参照画像を毎回アップロードし直すことになります。
+	ErrCacheRequired = errors.New("imagekit: Cache is required")
+	// ErrExecutorRequired は、NewGeminiGenerator に core が渡されなかった場合に返されます。
+	ErrExecutorRequired = errors.New("imagekit: core is required")
 )

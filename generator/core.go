@@ -3,6 +3,7 @@
 package generator
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -17,12 +18,19 @@ const (
 	// DefaultUploadTimeout は、UploadTimeout が指定されなかった場合の
 	// アップロード1回あたりの制限時間です。
 	DefaultUploadTimeout = 2 * time.Minute
-	cacheKeyFileAPI      = "fileapi:"
+	// DefaultFetchTimeout は、FetchTimeout が指定されなかった場合の
+	// 参照画像取得1回あたりの制限時間です。
+	DefaultFetchTimeout = time.Minute
+	// DefaultMaxReferenceBytes は、MaxReferenceBytes が指定されなかった場合の
+	// 参照画像1枚あたりのサイズ上限です。
+	DefaultMaxReferenceBytes int64 = 32 << 20 // 32 MiB
+	cacheKeyFileAPI                = "fileapi:"
 )
 
-// GeminiImageCore は AssetManager と ImageExecutor の両方の責務を担う基盤クラスです。
+// GeminiImageCore は参照画像の解決（取得・アップロード・キャッシュ）と
+// 生成リクエストの実行を担う基盤クラスです。
 type GeminiImageCore struct {
-	aiClient           gemini.MultimodalModel
+	aiClient           gemini.Model
 	reader             ports.ContentReader
 	httpClient         ports.Downloader
 	cache              ports.ImageCacher
@@ -31,6 +39,9 @@ type GeminiImageCore struct {
 	compressionQuality int
 	inlineReferences   bool
 	uploadTimeout      time.Duration
+	fetchTimeout       time.Duration
+	maxReferenceBytes  int64
+	logger             *slog.Logger
 	// uploadGroup は同一ソースの同時アップロードを1回にまとめます。
 	uploadGroup singleflight.Group
 }
@@ -40,8 +51,9 @@ type GeminiImageCore struct {
 // 位置引数で受けると、呼び出し側に true/false や数値が並んで何の設定か読めなくなります。
 type GeminiImageCoreConfig struct {
 	// AIClient / Reader / HTTPClient / Cache はいずれも必須です。
-	// Cache が必須なのは、DeleteFile が File API 上のファイル名をキャッシュから引くためです。
-	AIClient   gemini.MultimodalModel
+	// Cache が必須なのは、アップロード済み参照の使い回しがこのキットの主要な
+	// コスト最適化であり、キャッシュ無しでは毎回アップロードし直すためです。
+	AIClient   gemini.Model
 	Reader     ports.ContentReader
 	HTTPClient ports.Downloader
 	Cache      ports.ImageCacher
@@ -60,7 +72,7 @@ type GeminiImageCoreConfig struct {
 	// Compress を true にすると、参照画像を送信前に JPEG へ再圧縮します。
 	Compress bool
 	// InlineReferences を true にすると、参照画像を File API へ上げずに毎回
-	// バイト列としてインライン送信します（ResolveReference の解決方法を変えます）。
+	// バイト列としてインライン送信します（resolveReference の解決方法を変えます）。
 	//
 	// 既定（false）では Gemini API バックエンドで File API へアップロードし、以降は
 	// URI 参照で使い回します。同じ参照画像を繰り返し使うワークロードではこちらが有利です。
@@ -77,6 +89,15 @@ type GeminiImageCoreConfig struct {
 	// context から切り離されるため（先に離脱した呼び出し元が他を巻き添えにしないため）、
 	// 共有実行を打ち切れるのはこのタイムアウトだけです。
 	UploadTimeout time.Duration
+	// FetchTimeout は参照画像の取得（インライン送信経路）1回あたりの制限時間です。
+	// 0 以下なら DefaultFetchTimeout を使います。
+	FetchTimeout time.Duration
+	// MaxReferenceBytes は参照画像1枚あたりのサイズ上限です。0 以下なら
+	// DefaultMaxReferenceBytes を使います。上限を超えた参照はエラーになります
+	// （無制限だと、巨大なリモートファイルをメモリへ丸ごと読み込んでしまいます）。
+	MaxReferenceBytes int64
+	// Logger は、このコアが出すログの出力先です。nil の場合は slog.Default() を使います。
+	Logger *slog.Logger
 }
 
 // NewGeminiImageCore は依存関係を注入して GeminiImageCore を初期化します。
@@ -90,8 +111,6 @@ func NewGeminiImageCore(cfg GeminiImageCoreConfig) (*GeminiImageCore, error) {
 	if cfg.HTTPClient == nil {
 		return nil, ErrHTTPClientRequired
 	}
-	// cache は任意ではありません。DeleteFile が File API 上のファイル名を
-	// キャッシュから引くため、nil だと削除が一切できなくなります。
 	if cfg.Cache == nil {
 		return nil, ErrCacheRequired
 	}
@@ -104,6 +123,14 @@ func NewGeminiImageCore(cfg GeminiImageCoreConfig) (*GeminiImageCore, error) {
 	if uploadTimeout <= 0 {
 		uploadTimeout = DefaultUploadTimeout
 	}
+	fetchTimeout := cfg.FetchTimeout
+	if fetchTimeout <= 0 {
+		fetchTimeout = DefaultFetchTimeout
+	}
+	maxReferenceBytes := cfg.MaxReferenceBytes
+	if maxReferenceBytes <= 0 {
+		maxReferenceBytes = DefaultMaxReferenceBytes
+	}
 
 	return &GeminiImageCore{
 		aiClient:           cfg.AIClient,
@@ -115,10 +142,22 @@ func NewGeminiImageCore(cfg GeminiImageCoreConfig) (*GeminiImageCore, error) {
 		compressionQuality: quality,
 		inlineReferences:   cfg.InlineReferences,
 		uploadTimeout:      uploadTimeout,
+		fetchTimeout:       fetchTimeout,
+		maxReferenceBytes:  maxReferenceBytes,
+		logger:             cfg.Logger,
 	}, nil
 }
 
 // IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
 func (c *GeminiImageCore) IsVertexAI() bool {
 	return c.aiClient.IsVertexAI()
+}
+
+// log は設定済みロガーを返します。構造体リテラルで直接構築するテストでも
+// 安全に動くようフォールバックを持ちます。
+func (c *GeminiImageCore) log() *slog.Logger {
+	if c.logger != nil {
+		return c.logger
+	}
+	return slog.Default()
 }
