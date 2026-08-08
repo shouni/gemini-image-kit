@@ -16,6 +16,11 @@ func TestGuessMIMEType(t *testing.T) {
 		{"image.gif", "image/gif"}, // 新しく追加したケースにも対応
 		{"document.pdf", ""},       // 判別できない場合は空。誤った型を申告しない
 		{"no_extension", ""},
+		// 署名付き URL: クエリを除いたパスの拡張子で判定する。
+		// 素の filepath.Ext だと ".png?X-Goog-Signature=abc" となり常に判定不能だった。
+		{"https://storage.googleapis.com/bucket/ref.png?X-Goog-Signature=abc&X-Goog-Expires=3600", "image/png"},
+		{"https://example.com/photo.jpg?w=1200", "image/jpeg"},
+		{"https://example.com/download?id=123", ""},
 	}
 
 	for _, tt := range tests {

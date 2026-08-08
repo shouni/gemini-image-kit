@@ -14,14 +14,15 @@
 
 単なる API ラッパーではなく、「**GCS/外部URLからの参照画像自動取得**」「**Gemini File API とキャッシュの一貫性管理**」「**注入可能な Downloader による取得ポリシー制御**」「**インメモリ画像圧縮**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されています。
 
-`SingleImageRequest` による単一参照画像からの生成、`ImageFusionRequest` による複数参照画像を統合した1枚の画像生成をサポートします。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。既存画像の編集（構図を保った部分修正）が必要な場合は、`GenerateSingleImage` に既存画像を入力として渡し、編集指示をプロンプトとして渡すことで、Gemini の会話型マルチモーダル画像モデル（Nano Banana系）による編集が行えます。
+`ImageRequest` 1 つで、単一参照画像からの生成も、複数参照画像を統合した 1 枚の画像生成もサポートします（`Images` の枚数が解釈を決めます）。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。既存画像の編集（構図を保った部分修正）が必要な場合は、既存画像を参照に、編集指示をプロンプトとして `Generate` を呼ぶことで、Gemini の会話型マルチモーダル画像モデル（Nano Banana系）による編集が行えます。
 
 ---
 
 ## ✨ 主な特徴 (Features)
 
 * **🖼️ Unified Generator**:
-  * `GenerateSingleImage`、`GenerateFusedImage` により、単一参照画像の生成、複数参照画像の統合生成を一貫して管理。
+  * `Generate` / `GenerateBatch` により、単一・複数参照画像の生成と一括生成を一貫して管理。
+  * レート制限（`WithRateLimit`）・並列度（`WithMaxConcurrency`）・リクエストタイムアウト（`WithRequestTimeout`）を内蔵。利用側で errgroup + rate.Limiter を組む必要はありません。
 * **🧩 Image Fusion Workflow**:
   * 複数の参照画像を Gemini の入力パーツとして収集し、プロンプトと組み合わせて1枚の画像を生成。
   * 参照画像の取得（GCS / HTTP）は**並行実行**。参照が増えても待ち時間が積み上がりません。結果の並び順は入力順のまま保たれます。
@@ -39,73 +40,63 @@
   * **Selective Optimization**: PNG/GIF など圧縮対象の画像は JPEG に変換し、変換後の MIMEType も実データに合わせて送信します。
 * **🧬 Robust Design**:
   * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
-  * `WithAutoSeed()` を付けると、シード未指定の生成でも `ImageResponse.UsedSeed` が**実際に使われたシード**を返すため、記録しておけば同じ結果を再現できます。
+  * **シード自動採番が既定で有効**: シード未指定の生成でも `ImageResponse.UsedSeed` が実際に使われたシードを指すため、記録しておけば同じ結果を再現できます（`WithoutAutoSeed()` で無効化可）。
+  * `ImageResponse` は `Model` / `Prompt` / `Usage`（トークン使用量）も返すため、コストや生成条件の記録に別途リクエストを持ち回る必要がありません。
 
 ---
 
 ## 🧭 Public API
 
 ```go
-// 1枚の参照画像を使って画像を生成
-GenerateSingleImage(ctx, ports.SingleImageRequest)
+// 参照画像（0〜複数）と構成パラメータから1枚の画像を生成
+Generate(ctx, ports.ImageRequest) (*ports.ImageResponse, error)
 
-// 複数の参照画像を統合して1枚の画像を生成
-GenerateFusedImage(ctx, ports.ImageFusionRequest)
+// 複数リクエストを、設定された並列度・レート制限の下で一括生成
+// 一部が失敗しても成功した結果は破棄されない（失敗位置は nil + errors.Join）
+GenerateBatch(ctx, []ports.ImageRequest) ([]*ports.ImageResponse, error)
 ```
 
 生成時の任意設定は `generator.Option` で渡します。
 
 ```go
-g, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
+g, err := generator.NewGeminiGenerator(core,
+    generator.WithRateLimit(30*time.Second, 1), // 発射間隔とバースト
+    generator.WithMaxConcurrency(2),            // GenerateBatch の並列度
+    generator.WithRequestTimeout(5*time.Minute))
 ```
 
-内部の `GeminiImageCore` は 3 つのポートを実装します。参照画像は `gemini.Attachment` として渡され、バイト列でも `gs://` や `files/...` の URI 参照でも同じ型で表現されます。
-
-```go
-// ports.ImageExecutor: 生成リクエストの実行（プロンプト + 参照画像の添付）
-ExecuteRequest(ctx, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions)
-
-// ports.ReferenceResolver: 参照画像1件を送信できる添付へ解決（下の表の判断はここが持つ）
-ResolveReference(ctx, uri ports.ImageURI) (gemini.Attachment, error)
-
-// ports.AssetManager: File API のライフサイクル（アップロードは同一ソースで1回にまとまる）
-EnsureUploaded(ctx, fileURI string) (string, error)
-DeleteFile(ctx, fileURI string) error
-```
-
-参照画像を取得せずバイト列だけが欲しい場合は `PrepareImageAttachment(ctx, rawURL)` も公開しています（ポートには含めていません）。
+利用側が依存するポートは `ports.ImageGenerator`（1 メソッド）です。参照解決やアップロードの内部分割はパッケージ内に閉じており、公開インターフェースではありません。
 
 このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
 
 ### シードと再現性
 
-`ImageResponse.UsedSeed` は「生成に使われたシード」ですが、**API はレスポンスにシードを返しません**。そのためリクエストで `Seed` を指定しなかった場合、既定では API 側がランダムに選んだ値は知りようがなく、`UsedSeed` は 0 のままになります。これを「使われたシード」として記録すると、再生成時に 0 という別のシードを使うことになります。
+`ImageResponse.UsedSeed` は「生成に使われたシード」ですが、**API はレスポンスにシードを返しません**。そのため API 側にシード選択を委ねると値は知りようがなく、`UsedSeed` は 0 のままになります（0 は有効なシードなので「未記録」と区別も付きません）。
 
-`WithAutoSeed()` を付けると、シード未指定のリクエストに対して生成側でシードを決めてから送信するため、`UsedSeed` が常に実際の値を指します。生成結果のランダム性は変わりません（シードを選ぶのが API 側か生成側かの違いです）。
-
-```go
-generator, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
-```
+このため**シード未指定のリクエストには既定で生成側がシードを採番してから送信します**。`UsedSeed` は常に実際の値を指し、記録しておけば同じ結果を再現できます。生成結果のランダム性は変わりません（シードを選ぶのが API 側か生成側かの違いです）。シード管理を完全に呼び出し側で行う場合のみ `WithoutAutoSeed()` を使ってください。
 
 ### 設定 (`generator.GeminiImageCoreConfig`)
 
 | 設定項目 | 役割 | 既定値 |
 | --- | --- | --- |
-| `AIClient` | `gemini.MultimodalModel`（生成・File API・バックエンド判定）。**必須** | - |
+| `AIClient` | `gemini.Model`（生成・File API・バックエンド判定）。**必須** | - |
 | `Reader` | `gs://` を読む `ports.ContentReader`。**必須** | - |
 | `HTTPClient` | http(s) を読む `ports.Downloader`。**必須** | - |
-| `Cache` | アップロード済みファイルの参照を保持する `ports.ImageCacher`。**必須**（`DeleteFile` がファイル名をここから引くため） | - |
+| `Cache` | アップロード済みファイルの参照を保持する `ports.ImageCacher`（`Get`/`Set`）。**必須**（アップロードの使い回しがこのキットの主要なコスト最適化のため） | - |
 | `CacheTTL` | 上記キャッシュの有効期間。**0 は補完せずそのまま渡します**（`ttlcache` では 0 が `DefaultTTL` そのもので、「キャッシュ側の既定に従う」という意味を持つため）。File API の保持期限より短く設定してください | 実装依存 |
 | `Compress` | PNG/GIF を送信前に JPEG へ再圧縮するか | `false` |
 | `CompressionQuality` | `Compress` が true のときの JPEG 品質 | `75`（`DefaultCompressionQuality`） |
 | `UploadTimeout` | アップロード1回あたりの制限時間。共有実行は呼び出し元の context から切り離されるため、これが唯一の打ち切り手段です | `2m`（`DefaultUploadTimeout`） |
 | `InlineReferences` | 参照画像を File API へ上げず常にインライン送信するか（使い捨ての参照向け） | `false` |
+| `FetchTimeout` | 参照画像の取得（インライン送信経路）1回あたりの制限時間 | `1m`（`DefaultFetchTimeout`） |
+| `MaxReferenceBytes` | 参照画像1枚あたりのサイズ上限。超えるとエラー | `32MiB`（`DefaultMaxReferenceBytes`） |
+| `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
 
 必須依存が欠けている場合は `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired` を返します。
 
 ### 参照画像の解決方法
 
-`ImageURI` 1件をどう送るかは、バックエンドと URI の種類でキットが決めます（`ports.ReferenceResolver`）。
+`ImageURI` 1件をどう送るかは、バックエンドと URI の種類でキットが決めます。
 
 | 条件 | 解決方法 |
 | --- | --- |
@@ -116,13 +107,13 @@ generator, err := generator.NewGeminiGenerator(core, generator.WithAutoSeed())
 
 Gemini API バックエンドで同じ参照画像を繰り返し使う場合、毎回バイト列を送るより安く済みます。逆に参照画像が毎回異なる使い捨てのワークロードでは、アップロードの往復と File API 上のファイルが無駄になるため、`GeminiImageCoreConfig.InlineReferences: true` で常にインライン送信へ固定できます。
 
-アップロードに失敗した場合は警告ログを出してインライン送信にフォールバックします（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。
+アップロードに失敗した場合は警告ログを出してインライン送信にフォールバックします（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。ただし失敗の原因が呼び出し側のキャンセルである場合はフォールバックせず、キャンセルをそのまま返します。
 
 File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
 
 ### 参照画像の取得は並行
 
-`GenerateFusedImage` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`ttlcache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
+`Generate` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`ttlcache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
 
 ---
 
@@ -143,7 +134,7 @@ import (
     "sync"
     "time"
 
-    client "github.com/shouni/go-gemini-client/gemini"
+    "github.com/shouni/go-gemini-client/gemini"
     "github.com/shouni/gemini-image-kit/generator"
     "github.com/shouni/gemini-image-kit/ports"
 )
@@ -151,7 +142,7 @@ import (
 func main() {
     ctx := context.Background()
 
-    ai, err := client.NewClient(ctx, client.Config{
+    ai, err := gemini.NewClient(ctx, gemini.Config{
        APIKey: os.Getenv("GEMINI_API_KEY"),
     })
     if err != nil {
@@ -175,17 +166,19 @@ func main() {
        log.Fatal(err)
     }
 
-    resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
+    resp, err := g.Generate(ctx, ports.ImageRequest{
        GenerationOptions: ports.GenerationOptions{
           Model:          "gemini-3-pro-image",
           Prompt:         "参照画像の人物を、白背景の商品広告風ポートレートにしてください。",
           NegativePrompt: "low quality, blurry, distorted hands",
-          AspectRatio:    "1:1",
-          ImageSize:      "1K",
+          GenerateOptions: gemini.GenerateOptions{
+             AspectRatio: "1:1",
+             ImageSize:   "1K",
+          },
        },
-       Image: ports.ImageURI{
+       Images: []ports.ImageURI{{
           ReferenceURL: "https://example.com/reference.png",
-       },
+       }},
     })
     if err != nil {
        log.Fatal(err)
@@ -252,12 +245,6 @@ func (c *memoryCache) Set(key string, value any, ttl time.Duration) {
     defer c.mu.Unlock()
     c.data[key] = value
 }
-
-func (c *memoryCache) Delete(key string) {
-    c.mu.Lock()
-    defer c.mu.Unlock()
-    delete(c.data, key)
-}
 ```
 
 </details>
@@ -265,12 +252,14 @@ func (c *memoryCache) Delete(key string) {
 ### 2. 複数の参照画像を統合して生成する
 
 ```go
-resp, err := g.GenerateFusedImage(ctx, ports.ImageFusionRequest{
+resp, err := g.Generate(ctx, ports.ImageRequest{
     GenerationOptions: ports.GenerationOptions{
-       Model:       "gemini-3-pro-image",
-       Prompt:      "1枚目のキャラクターを、2枚目の服装と3枚目の背景に自然に合成してください。",
-       AspectRatio: "16:9",
-       ImageSize:   "2K",
+       Model:  "gemini-3-pro-image",
+       Prompt: "1枚目のキャラクターを、2枚目の服装と3枚目の背景に自然に合成してください。",
+       GenerateOptions: gemini.GenerateOptions{
+          AspectRatio: "16:9",
+          ImageSize:   "2K",
+       },
     },
     Images: []ports.ImageURI{
        {ReferenceURL: "https://example.com/character.png"},
@@ -285,7 +274,7 @@ resp, err := g.GenerateFusedImage(ctx, ports.ImageFusionRequest{
 Vertex AI モードでは、`gs://` の参照画像はダウンロードせずに Gemini へ直接渡します。
 
 ```go
-ai, err := client.NewClient(ctx, client.Config{
+ai, err := gemini.NewClient(ctx, gemini.Config{
     ProjectID:  "your-google-cloud-project-id",
     LocationID: "asia-northeast1",
 })
@@ -310,16 +299,18 @@ if err != nil {
     log.Fatal(err)
 }
 
-resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
+resp, err := g.Generate(ctx, ports.ImageRequest{
     GenerationOptions: ports.GenerationOptions{
-       Model:       "gemini-3-pro-image",
-       Prompt:      "この商品画像を、SNS 広告向けの高級感ある構図にしてください。",
-       AspectRatio: "4:5",
-       ImageSize:   "1K",
+       Model:  "gemini-3-pro-image",
+       Prompt: "この商品画像を、SNS 広告向けの高級感ある構図にしてください。",
+       GenerateOptions: gemini.GenerateOptions{
+          AspectRatio: "4:5",
+          ImageSize:   "1K",
+       },
     },
-    Image: ports.ImageURI{
+    Images: []ports.ImageURI{{
        ReferenceURL: "gs://your-bucket/products/source.png",
-    },
+    }},
 })
 ```
 
@@ -327,17 +318,17 @@ resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
 
 ### 4. 既存画像を編集する（Nano Banana系モデルによる会話型編集）
 
-このライブラリに画像編集専用の API はありませんが、既存画像を `SingleImageRequest.Image` に、編集指示を `Prompt` に渡して `GenerateSingleImage` を呼ぶことで、Gemini の会話型マルチモーダル画像モデル（`gemini-3.1-flash-image` など）による編集が行えます。
+このライブラリに画像編集専用の API はありませんが、既存画像を `Images` に、編集指示を `Prompt` に渡して `Generate` を呼ぶことで、Gemini の会話型マルチモーダル画像モデル（`gemini-3.1-flash-image` など）による編集が行えます。
 
 ```go
-resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
+resp, err := g.Generate(ctx, ports.ImageRequest{
     GenerationOptions: ports.GenerationOptions{
        Model:  "gemini-3.1-flash-image",
        Prompt: "対象領域のバッグを黒いレザーバッグに差し替えてください。他の部分は変更しないでください。",
     },
-    Image: ports.ImageURI{
+    Images: []ports.ImageURI{{
        ReferenceURL: "gs://your-bucket/edit/source.png",
-    },
+    }},
 })
 if err != nil {
     log.Fatal(err)
@@ -359,13 +350,13 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 - `ErrModelRequired`: 生成リクエストにモデル名が指定されていない場合。
 - `ErrEmptyPrompt`: プロンプト（ネガティブプロンプト含む）が空の場合。
 - `ErrUnsupportedFileFormat`: 取得したデータが画像として扱えない場合。
-- `ErrFileNotInCache`: File API のファイル名がキャッシュから引けず削除できない場合。
+- `ErrReferenceTooLarge`: 参照画像が `MaxReferenceBytes` を超えている場合。
 - `ErrNoImageData`: レスポンスに画像データが含まれていない場合。
 
 コンストラクタの必須依存に対するセンチネルは次のとおりです。
 
 - `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired`: `NewGeminiImageCore` に対応する依存が渡されなかった場合。
-- `ErrExecutorRequired`: `NewGeminiGenerator` に `ports.ImageExecutor` が渡されなかった場合。
+- `ErrExecutorRequired`: `NewGeminiGenerator` に core が渡されなかった場合。
 
 ---
 
@@ -374,8 +365,7 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装。`GeminiGenerator`（高レベル API）と `GeminiImageCore`（生成実行・参照画像の解決・File API のライフサイクル管理）。 |
-| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `ImageExecutor` / `ReferenceResolver` / `AssetManager` / `ImageCacher` / `ContentReader` / `Downloader`、リクエスト・レスポンス型、`ImageURI`。 |
-| `github.com/shouni/gemini-image-kit/imgutil` | 画像ユーティリティ。`GuessMIMEType`（拡張子から推測、不明なら空文字列）/ `DetectMIMEType`（内容から判定）/ `IsImageMIMEType` / `IsCompressibleMimeType` / `CompressToJPEG`。 |
+| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。 |
 
 `generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
 

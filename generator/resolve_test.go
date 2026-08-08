@@ -11,7 +11,7 @@ import (
 )
 
 // PrepareImageAttachment のテスト（キャッシュと変換）
-func TestGeminiImageCore_PrepareImageAttachment(t *testing.T) {
+func TestGeminiImageCore_prepareImageAttachment(t *testing.T) {
 	ctx := context.Background()
 	cache := &mockCache{data: make(map[string]any)}
 	// mocks_test.go の mockHTTPClient や mockReader を使用
@@ -24,9 +24,9 @@ func TestGeminiImageCore_PrepareImageAttachment(t *testing.T) {
 	t.Run("キャッシュヒット時はURI参照を返す", func(t *testing.T) {
 		rawURL := "https://example.com/img.png"
 		fileURI := "https://generativelanguage.googleapis.com/v1beta/files/test-id"
-		cache.Set(cacheKeyFileAPI+rawURL, cachedFile{URI: fileURI, Name: "files/test-id"}, time.Hour)
+		cache.Set(cacheKeyFileAPI+rawURL, fileURI, time.Hour)
 
-		attachment, err := core.PrepareImageAttachment(ctx, rawURL)
+		attachment, err := core.prepareImageAttachment(ctx, rawURL)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -42,7 +42,7 @@ func TestGeminiImageCore_PrepareImageAttachment(t *testing.T) {
 
 	t.Run("画像として扱えないデータはエラーを返す", func(t *testing.T) {
 		cache.Clear()
-		attachment, err := core.PrepareImageAttachment(ctx, "https://example.com/not-image.png")
+		attachment, err := core.prepareImageAttachment(ctx, "https://example.com/not-image.png")
 		if err == nil {
 			t.Fatal("expected error for invalid image data")
 		}
@@ -60,7 +60,7 @@ func TestGeminiImageCore_PrepareImageAttachment(t *testing.T) {
 			reader:     &mockReader{},
 		}
 
-		attachment, err := core.PrepareImageAttachment(ctx, "https://example.com/image.png")
+		attachment, err := core.prepareImageAttachment(ctx, "https://example.com/image.png")
 		if err == nil {
 			t.Fatal("expected fetch error")
 		}
@@ -99,9 +99,9 @@ func TestResolveReferenceUploadsOnGeminiAPI(t *testing.T) {
 	ai := &mockAIClient{vertexAI: false}
 	core := newPolicyCore(t, GeminiImageCoreConfig{AIClient: ai})
 
-	attachment, err := core.ResolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
+	attachment, err := core.resolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
 	if err != nil {
-		t.Fatalf("ResolveReference() error = %v", err)
+		t.Fatalf("resolveReference() error = %v", err)
 	}
 	if !ai.uploadCalled {
 		t.Error("File API へアップロードされていません")
@@ -122,8 +122,8 @@ func TestResolveReferenceReusesUpload(t *testing.T) {
 	uri := ports.ImageURI{ReferenceURL: "https://example.com/char.png"}
 
 	for i := range 3 {
-		if _, err := core.ResolveReference(context.Background(), uri); err != nil {
-			t.Fatalf("ResolveReference() #%d error = %v", i, err)
+		if _, err := core.resolveReference(context.Background(), uri); err != nil {
+			t.Fatalf("resolveReference() #%d error = %v", i, err)
 		}
 	}
 	if got := ai.uploads.Load(); got != 1 {
@@ -143,8 +143,8 @@ func TestEnsureUploadedDeduplicatesConcurrentUploads(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := core.EnsureUploaded(context.Background(), "https://example.com/same.png"); err != nil {
-				t.Errorf("EnsureUploaded() error = %v", err)
+			if _, err := core.ensureUploaded(context.Background(), "https://example.com/same.png"); err != nil {
+				t.Errorf("ensureUploaded() error = %v", err)
 			}
 		}()
 	}
@@ -161,9 +161,9 @@ func TestResolveReferenceInlinesOnVertexNonGCS(t *testing.T) {
 	ai := &mockAIClient{vertexAI: true}
 	core := newPolicyCore(t, GeminiImageCoreConfig{AIClient: ai})
 
-	attachment, err := core.ResolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
+	attachment, err := core.resolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
 	if err != nil {
-		t.Fatalf("ResolveReference() error = %v", err)
+		t.Fatalf("resolveReference() error = %v", err)
 	}
 	if ai.uploadCalled {
 		t.Error("Vertex AI では File API を使ってはいけません")
@@ -179,12 +179,12 @@ func TestResolveReferencePassesThroughGCSOnVertex(t *testing.T) {
 	ai := &mockAIClient{vertexAI: true}
 	core := newPolicyCore(t, GeminiImageCoreConfig{AIClient: ai})
 
-	attachment, err := core.ResolveReference(context.Background(), ports.ImageURI{
+	attachment, err := core.resolveReference(context.Background(), ports.ImageURI{
 		ReferenceURL: "gs://bucket/char.png",
 		FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/ignored",
 	})
 	if err != nil {
-		t.Fatalf("ResolveReference() error = %v", err)
+		t.Fatalf("resolveReference() error = %v", err)
 	}
 	if attachment.URI != "gs://bucket/char.png" {
 		t.Errorf("URI = %q, want the gs:// reference", attachment.URI)
@@ -200,9 +200,9 @@ func TestResolveReferenceInlineReferencesOption(t *testing.T) {
 	ai := &mockAIClient{vertexAI: false}
 	core := newPolicyCore(t, GeminiImageCoreConfig{AIClient: ai, InlineReferences: true})
 
-	attachment, err := core.ResolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
+	attachment, err := core.resolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
 	if err != nil {
-		t.Fatalf("ResolveReference() error = %v", err)
+		t.Fatalf("resolveReference() error = %v", err)
 	}
 	if ai.uploadCalled {
 		t.Error("InlineReferences 指定時にアップロードが走っています")
@@ -219,9 +219,9 @@ func TestResolveReferenceFallsBackToInlineOnUploadFailure(t *testing.T) {
 	ai := &countingAIClient{uploadErr: errors.New("quota exceeded")}
 	core := newPolicyCore(t, GeminiImageCoreConfig{AIClient: ai})
 
-	attachment, err := core.ResolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
+	attachment, err := core.resolveReference(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
 	if err != nil {
-		t.Fatalf("ResolveReference() error = %v", err)
+		t.Fatalf("resolveReference() error = %v", err)
 	}
 	if len(attachment.Data) == 0 {
 		t.Error("アップロード失敗時にインラインへフォールバックしていません")
@@ -233,11 +233,28 @@ func TestResolveReferenceFallsBackToInlineOnUploadFailure(t *testing.T) {
 func TestResolveReferenceSkipsEmpty(t *testing.T) {
 	core := newPolicyCore(t, GeminiImageCoreConfig{AIClient: &mockAIClient{}})
 
-	attachment, err := core.ResolveReference(context.Background(), ports.ImageURI{})
+	attachment, err := core.resolveReference(context.Background(), ports.ImageURI{})
 	if err != nil {
-		t.Fatalf("ResolveReference() error = %v", err)
+		t.Fatalf("resolveReference() error = %v", err)
 	}
 	if !attachment.IsEmpty() {
 		t.Errorf("attachment = %+v, want an empty one", attachment)
+	}
+}
+
+// TestResolveReferenceCancelDoesNotFallBack は、呼び出し側のキャンセルが原因の
+// アップロード失敗では、インライン送信へフォールバックせずキャンセルを返すことを
+// 確認します。以前は「アップロード失敗」と誤警告した上で同じ画像を再フェッチし、
+// 同じキャンセルで落ちていました（無駄な二重フェッチ）。
+func TestResolveReferenceCancelDoesNotFallBack(t *testing.T) {
+	ai := &countingAIClient{uploadDelay: 50 * time.Millisecond}
+	core := newPolicyCore(t, GeminiImageCoreConfig{AIClient: ai})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // 呼び出し前にキャンセル済みにする
+
+	_, err := core.resolveReference(ctx, ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled (フォールバックせず伝播する)", err)
 	}
 }

@@ -7,8 +7,7 @@ import (
 )
 
 // parseToResponse のテスト
-func TestGeminiImageCore_parseToResponse(t *testing.T) {
-	core := &GeminiImageCore{}
+func TestParseToResponse(t *testing.T) {
 	seed := int64(999)
 
 	t.Run("正常系: 画像が返る", func(t *testing.T) {
@@ -16,12 +15,15 @@ func TestGeminiImageCore_parseToResponse(t *testing.T) {
 			Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("png-data")}},
 		}
 
-		out, err := core.parseToResponse(resp, seed)
+		out, err := parseToResponse(resp, "gemini-test-model", "final prompt", seed)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if out.MimeType != "image/png" || out.UsedSeed != seed {
 			t.Errorf("parsed data mismatch: %+v", out)
+		}
+		if out.Model != "gemini-test-model" || out.Prompt != "final prompt" {
+			t.Errorf("model/prompt metadata missing: %+v", out)
 		}
 	})
 
@@ -29,7 +31,7 @@ func TestGeminiImageCore_parseToResponse(t *testing.T) {
 	// parseToResponse では画像データの有無のみを検証します。
 	t.Run("異常系: 添付が空（ブロック等で画像が返らなかった場合）", func(t *testing.T) {
 		resp := &gemini.Response{}
-		_, err := core.parseToResponse(resp, seed)
+		_, err := parseToResponse(resp, "m", "p", seed)
 		if err == nil {
 			t.Error("expected error when no image data is present")
 		}
@@ -37,14 +39,14 @@ func TestGeminiImageCore_parseToResponse(t *testing.T) {
 
 	t.Run("異常系: 画像データなし（テキストのみ）", func(t *testing.T) {
 		resp := &gemini.Response{Text: "just text"}
-		_, err := core.parseToResponse(resp, seed)
+		_, err := parseToResponse(resp, "m", "p", seed)
 		if err == nil {
 			t.Error("expected error for text-only response")
 		}
 	})
 
 	t.Run("異常系: 空のレスポンス", func(t *testing.T) {
-		_, err := core.parseToResponse(nil, seed)
+		_, err := parseToResponse(nil, "m", "p", seed)
 		if err == nil {
 			t.Error("expected error for nil response")
 		}

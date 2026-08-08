@@ -13,12 +13,12 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-func newFusionRequest(urls ...string) ports.ImageFusionRequest {
+func newFusionRequest(urls ...string) ports.ImageRequest {
 	images := make([]ports.ImageURI, 0, len(urls))
 	for _, url := range urls {
 		images = append(images, ports.ImageURI{ReferenceURL: url})
 	}
-	return ports.ImageFusionRequest{
+	return ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "fuse"},
 		Images:            images,
 	}
@@ -36,13 +36,10 @@ func TestCollectImageAttachmentsPreservesOrder(t *testing.T) {
 			return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
 		},
 	}
-	g, err := NewGeminiGenerator(stub)
-	if err != nil {
-		t.Fatalf("NewGeminiGenerator() error = %v", err)
-	}
+	g := newStubGenerator(stub)
 
-	if _, err := g.GenerateFusedImage(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
-		t.Fatalf("GenerateFusedImage() error = %v", err)
+	if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
+		t.Fatalf("Generate() error = %v", err)
 	}
 
 	got := make([]string, 0, len(stub.lastAttachments))
@@ -81,13 +78,10 @@ func TestCollectImageAttachmentsRunsConcurrently(t *testing.T) {
 			}
 		},
 	}
-	g, err := NewGeminiGenerator(stub)
-	if err != nil {
-		t.Fatalf("NewGeminiGenerator() error = %v", err)
-	}
+	g := newStubGenerator(stub)
 
-	if _, err := g.GenerateFusedImage(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
-		t.Fatalf("GenerateFusedImage() error = %v", err)
+	if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
+		t.Fatalf("Generate() error = %v", err)
 	}
 	if len(stub.lastAttachments) != refs {
 		t.Errorf("attachments = %d, want %d", len(stub.lastAttachments), refs)
@@ -113,12 +107,9 @@ func TestCollectImageAttachmentsReportsFirstErrorByIndex(t *testing.T) {
 			}
 		},
 	}
-	g, err := NewGeminiGenerator(stub)
-	if err != nil {
-		t.Fatalf("NewGeminiGenerator() error = %v", err)
-	}
+	g := newStubGenerator(stub)
 
-	_, err = g.GenerateFusedImage(context.Background(), newFusionRequest("a", "b", "c"))
+	_, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c"))
 	if !errors.Is(err, first) {
 		t.Errorf("error = %v, want the error from the first failing reference (%v)", err, first)
 	}
@@ -133,10 +124,7 @@ func TestCollectImageAttachmentsPropagatesCancellation(t *testing.T) {
 			return gemini.Attachment{}, ctx.Err()
 		},
 	}
-	g, err := NewGeminiGenerator(stub)
-	if err != nil {
-		t.Fatalf("NewGeminiGenerator() error = %v", err)
-	}
+	g := newStubGenerator(stub)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -144,26 +132,24 @@ func TestCollectImageAttachmentsPropagatesCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	_, err = g.GenerateFusedImage(ctx, newFusionRequest("a", "b"))
+	_, err := g.Generate(ctx, newFusionRequest("a", "b"))
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("error = %v, want context.Canceled", err)
 	}
 }
 
-// TestWithAutoSeedFillsMissingSeed は、シード未指定の生成でも UsedSeed が実際に
-// 送ったシードを指すことを確認します。0 のままだと「同条件での再生成」の記録が嘘になります。
-func TestWithAutoSeedFillsMissingSeed(t *testing.T) {
+// TestAutoSeedFillsMissingSeedByDefault は、シード未指定の生成でも既定で UsedSeed が
+// 実際に送ったシードを指すことを確認します。0 のままだと「同条件での再生成」の記録が
+// 嘘になります（以前はオプトインで、有効にしていない下流が誤記録していました）。
+func TestAutoSeedFillsMissingSeedByDefault(t *testing.T) {
 	stub := &stubExecutor{}
-	g, err := NewGeminiGenerator(stub, WithAutoSeed())
-	if err != nil {
-		t.Fatalf("NewGeminiGenerator() error = %v", err)
-	}
+	g := newStubGenerator(stub)
 
-	resp, err := g.GenerateSingleImage(context.Background(), ports.SingleImageRequest{
+	resp, err := g.Generate(context.Background(), ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "a cat"},
 	})
 	if err != nil {
-		t.Fatalf("GenerateSingleImage() error = %v", err)
+		t.Fatalf("Generate() error = %v", err)
 	}
 
 	if stub.lastOptions.Seed == nil {
@@ -177,42 +163,39 @@ func TestWithAutoSeedFillsMissingSeed(t *testing.T) {
 	}
 }
 
-// TestWithAutoSeedKeepsExplicitSeed は、明示されたシードを上書きしないことを確認します。
-func TestWithAutoSeedKeepsExplicitSeed(t *testing.T) {
+// TestAutoSeedKeepsExplicitSeed は、明示されたシードを上書きしないことを確認します。
+func TestAutoSeedKeepsExplicitSeed(t *testing.T) {
 	stub := &stubExecutor{}
-	g, err := NewGeminiGenerator(stub, WithAutoSeed())
-	if err != nil {
-		t.Fatalf("NewGeminiGenerator() error = %v", err)
-	}
+	g := newStubGenerator(stub)
 
 	seed := int64(4242)
-	resp, err := g.GenerateSingleImage(context.Background(), ports.SingleImageRequest{
-		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "a cat", Seed: &seed},
+	resp, err := g.Generate(context.Background(), ports.ImageRequest{
+		GenerationOptions: ports.GenerationOptions{
+			Model: "gemini-test-model", Prompt: "a cat",
+			GenerateOptions: gemini.GenerateOptions{Seed: &seed},
+		},
 	})
 	if err != nil {
-		t.Fatalf("GenerateSingleImage() error = %v", err)
+		t.Fatalf("Generate() error = %v", err)
 	}
 	if resp.UsedSeed != seed {
 		t.Errorf("UsedSeed = %d, want %d", resp.UsedSeed, seed)
 	}
 }
 
-// TestWithoutAutoSeedLeavesSeedUnset は、既定では従来どおりシードを送らないことを
-// 確認します（API 側がランダムに選び、UsedSeed は 0 のまま）。
+// TestWithoutAutoSeedLeavesSeedUnset は、WithoutAutoSeed 指定時はシードを送らない
+// ことを確認します（API 側がランダムに選び、UsedSeed は 0 のまま）。
 func TestWithoutAutoSeedLeavesSeedUnset(t *testing.T) {
 	stub := &stubExecutor{}
-	g, err := NewGeminiGenerator(stub)
-	if err != nil {
-		t.Fatalf("NewGeminiGenerator() error = %v", err)
-	}
+	g := newStubGenerator(stub, WithoutAutoSeed())
 
-	if _, err := g.GenerateSingleImage(context.Background(), ports.SingleImageRequest{
+	if _, err := g.Generate(context.Background(), ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "a cat"},
 	}); err != nil {
-		t.Fatalf("GenerateSingleImage() error = %v", err)
+		t.Fatalf("Generate() error = %v", err)
 	}
 	if stub.lastOptions.Seed != nil {
-		t.Errorf("Seed = %d, want no seed without WithAutoSeed", *stub.lastOptions.Seed)
+		t.Errorf("Seed = %d, want no seed with WithoutAutoSeed", *stub.lastOptions.Seed)
 	}
 }
 

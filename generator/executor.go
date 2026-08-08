@@ -9,20 +9,20 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// ExecuteRequest は Gemini API を呼び出し、レスポンスをパースします。
-func (c *GeminiImageCore) ExecuteRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+// executeRequest は Gemini API を呼び出し、レスポンスをパースします。
+func (c *GeminiImageCore) executeRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
 	resp, err := c.aiClient.GenerateWithAttachments(ctx, model, prompt, attachments, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.parseToResponse(resp, dereferenceSeed(opts.Seed))
+	return parseToResponse(resp, model, prompt, dereferenceSeed(opts.Seed))
 }
 
 // parseToResponse は Gemini からのレスポンスから画像データを抽出します。
 // FinishReason の検証（安全フィルターによるブロック等）は下層の go-gemini-client が行い、
 // ブロック時は生成呼び出し自体がエラーを返すため、ここでは行いません。
-func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*ports.ImageResponse, error) {
+func parseToResponse(resp *gemini.Response, model, prompt string, seed int64) (*ports.ImageResponse, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("%w: no response", ErrNoImageData)
 	}
@@ -37,6 +37,9 @@ func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*p
 			Data:     attachment.Data,
 			MimeType: attachment.MIMEType,
 			UsedSeed: seed,
+			Model:    model,
+			Prompt:   prompt,
+			Usage:    resp.Usage,
 		}, nil
 	}
 
@@ -46,8 +49,8 @@ func (c *GeminiImageCore) parseToResponse(resp *gemini.Response, seed int64) (*p
 // dereferenceSeed は *int64 を安全にデリファレンスします。nil は 0 になります。
 //
 // ImageResponse.UsedSeed は「リクエストで指定したシード」で、API はレスポンスに
-// シードを返しません。未指定（nil）のまま生成すると 0 が記録されるため、
-// 再現性が必要なら WithAutoSeed を使ってください。
+// シードを返しません。自動採番が既定で有効なため通常は実際のシードが入りますが、
+// WithoutAutoSeed を使いつつ未指定で生成すると 0 が記録されます。
 func dereferenceSeed(seed *int64) int64 {
 	if seed == nil {
 		return 0

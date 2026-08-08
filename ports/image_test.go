@@ -2,36 +2,37 @@ package ports
 
 import (
 	"testing"
+
+	"github.com/shouni/go-gemini-client/gemini"
 )
 
-func TestSingleImageRequest_Fields(t *testing.T) {
-	t.Run("should correctly store ImageURI and GenerationOptions", func(t *testing.T) {
-		fileAPI := "https://generativelanguage.googleapis.com/v1beta/files/test-id"
-		refURL := "gs://my-bucket/character.png"
-		size := "2K"
-
-		req := SingleImageRequest{
-			Image: ImageURI{
-				FileAPIURI:   fileAPI,
-				ReferenceURL: refURL,
+// TestGenerationOptionsPromotesGeminiFields は、埋め込んだ gemini.GenerateOptions の
+// フィールドが昇格で読み書きできることを確認します。この昇格が利用側コードの
+// 互換性（req.ImageSize のようなアクセス）を支えています。
+func TestGenerationOptionsPromotesGeminiFields(t *testing.T) {
+	req := ImageRequest{
+		GenerationOptions: GenerationOptions{
+			Model:  "gemini-test",
+			Prompt: "a cat",
+			GenerateOptions: gemini.GenerateOptions{
+				ImageSize:   "2K",
+				AspectRatio: "16:9",
 			},
-			GenerationOptions: GenerationOptions{
-				ImageSize: size,
-			},
-		}
+		},
+		Images: []ImageURI{{ReferenceURL: "gs://bucket/ref.png"}},
+	}
 
-		// ImageURI 経由の確認
-		if req.Image.FileAPIURI != fileAPI {
-			t.Errorf("FileAPIURI is incorrect. want: %s, got: %s", fileAPI, req.Image.FileAPIURI)
-		}
-		if req.Image.ReferenceURL != refURL {
-			t.Errorf("ReferenceURL is incorrect. want: %s, got: %s", refURL, req.Image.ReferenceURL)
-		}
+	if req.ImageSize != "2K" {
+		t.Errorf("promoted ImageSize = %q, want 2K", req.ImageSize)
+	}
+	if req.AspectRatio != "16:9" {
+		t.Errorf("promoted AspectRatio = %q, want 16:9", req.AspectRatio)
+	}
 
-		if req.ImageSize != size {
-			t.Errorf("ImageSize is incorrect. want: %s, got: %s", size, req.ImageSize)
-		}
-	})
+	req.ImageSize = "1K" // 昇格フィールドへの書き込み
+	if req.GenerateOptions.ImageSize != "1K" {
+		t.Errorf("write through promotion failed: %q", req.GenerateOptions.ImageSize)
+	}
 }
 
 func TestImageURI_IsEmpty(t *testing.T) {
@@ -52,25 +53,4 @@ func TestImageURI_IsEmpty(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestImageFusionRequest_Fields(t *testing.T) {
-	t.Run("should correctly store multiple ImageURIs", func(t *testing.T) {
-		uris := []ImageURI{
-			{ReferenceURL: "url1", FileAPIURI: "api1"},
-			{ReferenceURL: "url2", FileAPIURI: "api2"},
-		}
-
-		req := ImageFusionRequest{
-			Images: uris,
-		}
-
-		if len(req.Images) != 2 {
-			t.Fatalf("Images length is incorrect. want: 2, got: %d", len(req.Images))
-		}
-
-		if req.Images[1].FileAPIURI != "api2" {
-			t.Errorf("Second Image FileAPIURI is incorrect. want: api2, got: %s", req.Images[1].FileAPIURI)
-		}
-	})
 }

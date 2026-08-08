@@ -3,17 +3,16 @@ package generator
 import (
 	"bufio"
 	"context"
-	"fmt"
 )
 
-// EnsureUploaded は指定された fileURI の画像を Gemini File API にアップロードし、
+// ensureUploaded は指定された fileURI の画像を Gemini File API にアップロードし、
 // アップロード先の URI を返します。すでにアップロード済みならキャッシュの URI を返します。
 //
 // 引数の Reader を受け取る gemini.FileManager.UploadFile とは役割が異なります
 // （こちらは「URL から取得してアップロードするところまで」を担います）。
-func (c *GeminiImageCore) EnsureUploaded(ctx context.Context, fileURI string) (string, error) {
-	if entry, ok := c.lookupCache(fileURI); ok {
-		return entry.URI, nil
+func (c *GeminiImageCore) ensureUploaded(ctx context.Context, fileURI string) (string, error) {
+	if uri, ok := c.lookupCache(fileURI); ok {
+		return uri, nil
 	}
 	return c.uploadOnce(ctx, fileURI)
 }
@@ -33,8 +32,8 @@ func (c *GeminiImageCore) uploadOnce(ctx context.Context, fileURI string) (strin
 		defer cancel()
 
 		// 直前に別の実行が完了している可能性があるため、もう一度キャッシュを見る。
-		if entry, ok := c.lookupCache(fileURI); ok {
-			return entry.URI, nil
+		if uri, ok := c.lookupCache(fileURI); ok {
+			return uri, nil
 		}
 		return c.fetchAndUpload(execCtx, fileURI)
 	})
@@ -69,55 +68,26 @@ func (c *GeminiImageCore) fetchAndUpload(ctx context.Context, fileURI string) (s
 		return "", err
 	}
 
-	c.storeCache(fileURI, cachedFile{URI: uploaded.URI, Name: uploaded.Name})
+	c.storeCache(fileURI, uploaded.URI)
 	return uploaded.URI, nil
 }
 
-// DeleteFile は指定された URI を使用して Gemini File API からファイルを削除します。
-// 削除に成功した場合は、同じソース URI での再利用を防ぐためキャッシュも無効化します。
-func (c *GeminiImageCore) DeleteFile(ctx context.Context, fileURI string) error {
-	entry, ok := c.lookupCache(fileURI)
-	if !ok || entry.Name == "" {
-		return fmt.Errorf("%w: %s", ErrFileNotInCache, fileURI)
-	}
-	if err := c.aiClient.DeleteFile(ctx, entry.Name); err != nil {
-		return err
-	}
-	c.removeFromCache(fileURI)
-	return nil
-}
-
-// cachedFile は File API 上のファイル参照です。
-//
-// URI と Name を1エントリにまとめて保存します。別々のキーに分けると、
-// 片方だけが失効したときに「生成には使えるが削除できない」中途半端な状態が
-// 生まれるためです（DeleteFile は Name に依存します）。
-type cachedFile struct {
-	URI  string
-	Name string
-}
-
-// lookupCache は、ソース URI に紐づくキャッシュエントリを取得します。
-// 旧形式（文字列を個別キーに保存）のエントリは型アサーションに失敗して
-// ミス扱いになるため、キャッシュ形式の変更は安全に無視されます。
-func (c *GeminiImageCore) lookupCache(sourceURI string) (cachedFile, bool) {
+// lookupCache は、ソース URI に紐づくアップロード済み URI を取得します。
+// 旧形式（構造体を保存）のエントリは型アサーションに失敗してミス扱いになるため、
+// キャッシュ形式の変更は安全に無視されます。
+func (c *GeminiImageCore) lookupCache(sourceURI string) (string, bool) {
 	val, ok := c.cache.Get(cacheKeyFileAPI + sourceURI)
 	if !ok {
-		return cachedFile{}, false
+		return "", false
 	}
-	entry, ok := val.(cachedFile)
-	if !ok || entry.URI == "" {
-		return cachedFile{}, false
+	uri, ok := val.(string)
+	if !ok || uri == "" {
+		return "", false
 	}
-	return entry, true
+	return uri, true
 }
 
-// storeCache は、ソース URI に紐づくキャッシュエントリを保存します。
-func (c *GeminiImageCore) storeCache(sourceURI string, entry cachedFile) {
-	c.cache.Set(cacheKeyFileAPI+sourceURI, entry, c.expiration)
-}
-
-// removeFromCache は、指定されたソース URI に紐づくキャッシュエントリを削除します。
-func (c *GeminiImageCore) removeFromCache(sourceURI string) {
-	c.cache.Delete(cacheKeyFileAPI + sourceURI)
+// storeCache は、ソース URI に紐づくアップロード済み URI を保存します。
+func (c *GeminiImageCore) storeCache(sourceURI string, uploadedURI string) {
+	c.cache.Set(cacheKeyFileAPI+sourceURI, uploadedURI, c.expiration)
 }

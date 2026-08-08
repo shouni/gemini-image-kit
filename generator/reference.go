@@ -8,7 +8,7 @@ import (
 
 	"github.com/shouni/go-gemini-client/gemini"
 
-	"github.com/shouni/gemini-image-kit/imgutil"
+	"github.com/shouni/gemini-image-kit/internal/imgutil"
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
@@ -102,7 +102,7 @@ func firstMeaningfulError(errs []error) error {
 // 「どう解決するか」（直接参照 / File API / インライン）はバックエンドとキャッシュを
 // 持つ ImageExecutor 側の判断なので、ここでは失敗した参照を示す文脈だけを足します。
 func (g *GeminiGenerator) resolveImageAttachment(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
-	attachment, err := g.core.ResolveReference(ctx, uri)
+	attachment, err := g.core.resolveReference(ctx, uri)
 	if err != nil {
 		return gemini.Attachment{}, fmt.Errorf("failed to prepare image attachment for %q: %w", uri.ReferenceURL, err)
 	}

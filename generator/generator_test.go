@@ -11,7 +11,7 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-func TestGeminiGenerator_GenerateSingleImage(t *testing.T) {
+func TestGeminiGenerator_GenerateWithSingleReference(t *testing.T) {
 	ctx := context.Background()
 	ai := &mockAIClient{}
 	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
@@ -26,16 +26,16 @@ func TestGeminiGenerator_GenerateSingleImage(t *testing.T) {
 		t.Fatalf("failed to create generator: %v", err)
 	}
 
-	resp, err := g.GenerateSingleImage(ctx, ports.SingleImageRequest{
+	resp, err := g.Generate(ctx, ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{
-			Model:     "gemini-test-model",
-			Prompt:    "test prompt",
-			ImageSize: "2K",
+			Model:           "gemini-test-model",
+			Prompt:          "test prompt",
+			GenerateOptions: gemini.GenerateOptions{ImageSize: "2K"},
 		},
-		Image: ports.ImageURI{
+		Images: []ports.ImageURI{{
 			FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/test",
 			ReferenceURL: "gs://bucket/ref.png",
-		},
+		}},
 	})
 
 	if err != nil {
@@ -49,7 +49,7 @@ func TestGeminiGenerator_GenerateSingleImage(t *testing.T) {
 	}
 }
 
-func TestGeminiGenerator_GenerateFusedImage(t *testing.T) {
+func TestGeminiGenerator_GenerateWithMultipleReferences(t *testing.T) {
 	ctx := context.Background()
 	ai := &mockAIClient{}
 	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
@@ -64,11 +64,11 @@ func TestGeminiGenerator_GenerateFusedImage(t *testing.T) {
 		t.Fatalf("failed to create generator: %v", err)
 	}
 
-	resp, err := g.GenerateFusedImage(ctx, ports.ImageFusionRequest{
+	resp, err := g.Generate(ctx, ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{
-			Model:       "gemini-test-model",
-			Prompt:      "fuse these",
-			AspectRatio: "16:9",
+			Model:           "gemini-test-model",
+			Prompt:          "fuse these",
+			GenerateOptions: gemini.GenerateOptions{AspectRatio: "16:9"},
 		},
 		Images: []ports.ImageURI{
 			{FileAPIURI: "https://generativelanguage.googleapis.com/v1beta/files/one", ReferenceURL: "ref-1"},
@@ -115,7 +115,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	t.Run("Vertex AI: 指定された値を尊重する", func(t *testing.T) {
 		g := newGenerator(t, true)
 		opts := g.toOptions(ports.GenerationOptions{
-			PersonGeneration: gemini.PersonGenerationDontAllow,
+			GenerateOptions: gemini.GenerateOptions{PersonGeneration: gemini.PersonGenerationDontAllow},
 		})
 		if opts.PersonGeneration != gemini.PersonGenerationDontAllow {
 			t.Errorf("PersonGeneration = %q, want %q", opts.PersonGeneration, gemini.PersonGenerationDontAllow)
@@ -125,7 +125,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	t.Run("Gemini API: 指定されていても常に未設定", func(t *testing.T) {
 		g := newGenerator(t, false)
 		opts := g.toOptions(ports.GenerationOptions{
-			PersonGeneration: gemini.PersonGenerationAllowAll,
+			GenerateOptions: gemini.GenerateOptions{PersonGeneration: gemini.PersonGenerationAllowAll},
 		})
 		if opts.PersonGeneration != gemini.PersonGenerationUnspecified {
 			t.Errorf("PersonGeneration = %q, want unspecified", opts.PersonGeneration)
@@ -133,7 +133,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	})
 }
 
-func TestGeminiGenerator_GenerateSingleImage_ReturnsImagePreparationError(t *testing.T) {
+func TestGeminiGenerator_Generate_ReturnsImagePreparationError(t *testing.T) {
 	ctx := context.Background()
 	ai := &mockAIClient{}
 	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
@@ -148,12 +148,12 @@ func TestGeminiGenerator_GenerateSingleImage_ReturnsImagePreparationError(t *tes
 		t.Fatalf("failed to create generator: %v", err)
 	}
 
-	_, err = g.GenerateSingleImage(ctx, ports.SingleImageRequest{
+	_, err = g.Generate(ctx, ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{
 			Model:  "gemini-test-model",
 			Prompt: "test prompt",
 		},
-		Image: ports.ImageURI{ReferenceURL: "https://example.com/source.png"},
+		Images: []ports.ImageURI{{ReferenceURL: "https://example.com/source.png"}},
 	})
 
 	if err == nil {
