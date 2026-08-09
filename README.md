@@ -28,7 +28,7 @@
   * 参照画像の取得（GCS / HTTP）は**並行実行**。参照が増えても待ち時間が積み上がりません。結果の並び順は入力順のまま保たれます。
 * **🔗 Hybrid Asset Workflow**:
   * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
-  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。**この判断はキット側が持つため、呼び出し側でアップロードを組む必要はありません**（`ResolveReference`）。
+  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。**この判断はキット側が持つため、呼び出し側でアップロードを組む必要はありません**（下記「参照画像の解決方法」）。
   * 同一ソースへの同時アップロードは singleflight で1回にまとまります。同じ参照画像を並行して使っても File API 上に重複ファイルを作りません。
 * **☁️ Intelligent MIME Prediction**:
   * GCS や外部 URI を参照するときは拡張子から `MIMEType` を推測し、インライン送信するときは実データの内容から判定します。
@@ -42,6 +42,17 @@
   * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
   * **シード自動採番が既定で有効**: シード未指定の生成でも `ImageResponse.UsedSeed` が実際に使われたシードを指すため、記録しておけば同じ結果を再現できます（`WithoutAutoSeed()` で無効化可）。
   * `ImageResponse` は `Model` / `Prompt` / `Usage`（トークン使用量）も返すため、コストや生成条件の記録に別途リクエストを持ち回る必要がありません。
+
+---
+
+## 📂 パッケージ構成 (Packages)
+
+| パッケージ | 役割 |
+| --- | --- |
+| `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装。`GeminiGenerator`（高レベル API）と `GeminiImageCore`（生成実行・参照画像の解決・File API のライフサイクル管理）。 |
+| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。 |
+
+`generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
 
 ---
 
@@ -69,51 +80,16 @@ g, err := generator.NewGeminiGenerator(core,
 
 このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
 
-### シードと再現性
+### `ports.ImageResponse` の中身
 
-`ImageResponse.UsedSeed` は「生成に使われたシード」ですが、**API はレスポンスにシードを返しません**。そのため API 側にシード選択を委ねると値は知りようがなく、`UsedSeed` は 0 のままになります（0 は有効なシードなので「未記録」と区別も付きません）。
-
-このため**シード未指定のリクエストには既定で生成側がシードを採番してから送信します**。`UsedSeed` は常に実際の値を指し、記録しておけば同じ結果を再現できます。生成結果のランダム性は変わりません（シードを選ぶのが API 側か生成側かの違いです）。シード管理を完全に呼び出し側で行う場合のみ `WithoutAutoSeed()` を使ってください。
-
-### 設定 (`generator.GeminiImageCoreConfig`)
-
-| 設定項目 | 役割 | 既定値 |
-| --- | --- | --- |
-| `AIClient` | `gemini.Model`（生成・File API・バックエンド判定）。**必須** | - |
-| `Reader` | `gs://` を読む `ports.ContentReader`。**必須** | - |
-| `HTTPClient` | http(s) を読む `ports.Downloader`。**必須** | - |
-| `Cache` | アップロード済みファイルの参照を保持する `ports.ImageCacher`（`Get`/`Set`）。**必須**（アップロードの使い回しがこのキットの主要なコスト最適化のため） | - |
-| `CacheTTL` | 上記キャッシュの有効期間。**0 は補完せずそのまま渡します**（`ttlcache` では 0 が `DefaultTTL` そのもので、「キャッシュ側の既定に従う」という意味を持つため）。File API の保持期限より短く設定してください | 実装依存 |
-| `Compress` | PNG/GIF を送信前に JPEG へ再圧縮するか | `false` |
-| `CompressionQuality` | `Compress` が true のときの JPEG 品質 | `75`（`DefaultCompressionQuality`） |
-| `UploadTimeout` | アップロード1回あたりの制限時間。共有実行は呼び出し元の context から切り離されるため、これが唯一の打ち切り手段です | `2m`（`DefaultUploadTimeout`） |
-| `InlineReferences` | 参照画像を File API へ上げず常にインライン送信するか（使い捨ての参照向け） | `false` |
-| `FetchTimeout` | 参照画像の取得（インライン送信経路）1回あたりの制限時間 | `1m`（`DefaultFetchTimeout`） |
-| `MaxReferenceBytes` | 参照画像1枚あたりのサイズ上限。超えるとエラー | `32MiB`（`DefaultMaxReferenceBytes`） |
-| `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
-
-必須依存が欠けている場合は `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired` を返します。
-
-### 参照画像の解決方法
-
-`ImageURI` 1件をどう送るかは、バックエンドと URI の種類でキットが決めます。
-
-| 条件 | 解決方法 |
+| フィールド | 内容 |
 | --- | --- |
-| Vertex AI + `gs://` | 転送せず直接参照（最も安い。`FileAPIURI` の指定より優先） |
-| `FileAPIURI` が指定済み | その URI をそのまま参照 |
-| Gemini API | **File API へアップロードして URI 参照**（キャッシュ + singleflight） |
-| Vertex AI + `gs://` 以外 | インライン送信（Vertex AI に File API は無いため） |
-
-Gemini API バックエンドで同じ参照画像を繰り返し使う場合、毎回バイト列を送るより安く済みます。逆に参照画像が毎回異なる使い捨てのワークロードでは、アップロードの往復と File API 上のファイルが無駄になるため、`GeminiImageCoreConfig.InlineReferences: true` で常にインライン送信へ固定できます。
-
-アップロードに失敗した場合は警告ログを出してインライン送信にフォールバックします（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。ただし失敗の原因が呼び出し側のキャンセルである場合はフォールバックせず、キャンセルをそのまま返します。
-
-File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
-
-### 参照画像の取得は並行
-
-`Generate` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`ttlcache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
+| `Data` | 生成された画像のバイト列です。 |
+| `MimeType` | 画像の MIME type。保存時の拡張子や Content-Type の決定に使います。 |
+| `UsedSeed` | 送信したシード（既定では自動採番された値）。下記「シードと再現性」を参照。 |
+| `Model` | 生成に使ったモデル名。リクエストを持ち回らずコスト集計や再現に使えます。 |
+| `Prompt` | 実際に送信した最終プロンプト（ネガティブプロンプト結合済み）。 |
+| `Usage` | トークン使用量（`*gemini.TokenUsage`）。モデルが返さない場合は nil です。 |
 
 ---
 
@@ -343,6 +319,58 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 
 ---
 
+## ⚙️ 設定 (`generator.GeminiImageCoreConfig`)
+
+| 設定項目 | 役割 | 既定値 |
+| --- | --- | --- |
+| `AIClient` | `gemini.Model`（生成・File API・バックエンド判定）。**必須** | - |
+| `Reader` | `gs://` を読む `ports.ContentReader`。**必須** | - |
+| `HTTPClient` | http(s) を読む `ports.Downloader`。**必須** | - |
+| `Cache` | アップロード済みファイルの参照を保持する `ports.ImageCacher`（`Get`/`Set`）。**必須**（アップロードの使い回しがこのキットの主要なコスト最適化のため） | - |
+| `CacheTTL` | 上記キャッシュの有効期間。**0 は補完せずそのまま渡します**（`ttlcache` では 0 が `DefaultTTL` そのもので、「キャッシュ側の既定に従う」という意味を持つため）。File API の保持期限より短く設定してください | 実装依存 |
+| `Compress` | PNG/GIF を送信前に JPEG へ再圧縮するか | `false` |
+| `CompressionQuality` | `Compress` が true のときの JPEG 品質 | `75`（`DefaultCompressionQuality`） |
+| `UploadTimeout` | アップロード1回あたりの制限時間。共有実行は呼び出し元の context から切り離されるため、これが唯一の打ち切り手段です | `2m`（`DefaultUploadTimeout`） |
+| `InlineReferences` | 参照画像を File API へ上げず常にインライン送信するか（使い捨ての参照向け） | `false` |
+| `FetchTimeout` | 参照画像の取得（インライン送信経路）1回あたりの制限時間 | `1m`（`DefaultFetchTimeout`） |
+| `MaxReferenceBytes` | 参照画像1枚あたりのサイズ上限。超えるとエラー | `32MiB`（`DefaultMaxReferenceBytes`） |
+| `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
+
+必須依存が欠けている場合は `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired` を返します。
+
+---
+
+## 🎯 参照画像の解決方法
+
+`ImageURI` 1件をどう送るかは、バックエンドと URI の種類でキットが決めます。
+
+| 条件 | 解決方法 |
+| --- | --- |
+| Vertex AI + `gs://` | 転送せず直接参照（最も安い。`FileAPIURI` の指定より優先） |
+| `FileAPIURI` が指定済み | その URI をそのまま参照 |
+| Gemini API | **File API へアップロードして URI 参照**（キャッシュ + singleflight） |
+| Vertex AI + `gs://` 以外 | インライン送信（Vertex AI に File API は無いため） |
+
+Gemini API バックエンドで同じ参照画像を繰り返し使う場合、毎回バイト列を送るより安く済みます。逆に参照画像が毎回異なる使い捨てのワークロードでは、アップロードの往復と File API 上のファイルが無駄になるため、`GeminiImageCoreConfig.InlineReferences: true` で常にインライン送信へ固定できます。
+
+アップロードに失敗した場合は警告ログを出してインライン送信にフォールバックします（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。ただし失敗の原因が呼び出し側のキャンセルである場合はフォールバックせず、キャンセルをそのまま返します。
+
+File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
+
+### 参照画像の取得は並行
+
+`Generate` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`ttlcache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
+
+---
+
+## 🎲 シードと再現性
+
+`ImageResponse.UsedSeed` は「生成に使われたシード」ですが、**API はレスポンスにシードを返しません**。そのため API 側にシード選択を委ねると値は知りようがなく、`UsedSeed` は 0 のままになります（0 は有効なシードなので「未記録」と区別も付きません）。
+
+このため**シード未指定のリクエストには既定で生成側がシードを採番してから送信します**。`UsedSeed` は常に実際の値を指し、記録しておけば同じ結果を再現できます。生成結果のランダム性は変わりません（シードを選ぶのが API 側か生成側かの違いです）。シード管理を完全に呼び出し側で行う場合のみ `WithoutAutoSeed()` を使ってください。
+
+---
+
 ## 📜 エラーハンドリング
 
 `generator` パッケージは以下のセンチネルエラーをエクスポートしています。`errors.Is` で判定できます。
@@ -360,17 +388,6 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 
 ---
 
-## 📂 パッケージ構成 (Packages)
-
-| パッケージ | 役割 |
-| --- | --- |
-| `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装。`GeminiGenerator`（高レベル API）と `GeminiImageCore`（生成実行・参照画像の解決・File API のライフサイクル管理）。 |
-| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。 |
-
-`generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
-
----
-
 ## 🤝 依存関係 (Dependencies)
 
 * [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - **Backend（Vertex AI / Google AI）を抽象化するクライアント**
@@ -378,6 +395,6 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 
 ---
 
-### 📜 ライセンス (License)
+## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
