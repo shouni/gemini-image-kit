@@ -30,20 +30,21 @@ func newFusionRequest(urls ...string) ports.ImageRequest {
 func TestCollectImageAttachmentsPreservesOrder(t *testing.T) {
 	// 後ろの画像ほど速く返るようにして、完了順と入力順をずらす。
 	delays := map[string]time.Duration{"a": 30 * time.Millisecond, "b": 15 * time.Millisecond, "c": 0}
-	stub := &stubExecutor{
+	resolver := &stubResolver{
 		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
 			time.Sleep(delays[rawURL])
 			return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
 		},
 	}
-	g := newStubGenerator(stub)
+	g, client := newStubGenerator(t, resolver)
 
 	if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	got := make([]string, 0, len(stub.lastAttachments))
-	for _, attachment := range stub.lastAttachments {
+	attachments := client.attachments()
+	got := make([]string, 0, len(attachments))
+	for _, attachment := range attachments {
 		got = append(got, string(attachment.Data))
 	}
 	want := []string{"a", "b", "c"}
@@ -61,7 +62,7 @@ func TestCollectImageAttachmentsRunsConcurrently(t *testing.T) {
 		entered int
 		barrier = make(chan struct{})
 	)
-	stub := &stubExecutor{
+	resolver := &stubResolver{
 		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
 			mu.Lock()
 			entered++
@@ -78,13 +79,13 @@ func TestCollectImageAttachmentsRunsConcurrently(t *testing.T) {
 			}
 		},
 	}
-	g := newStubGenerator(stub)
+	g, client := newStubGenerator(t, resolver)
 
 	if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
-	if len(stub.lastAttachments) != refs {
-		t.Errorf("attachments = %d, want %d", len(stub.lastAttachments), refs)
+	if got := len(client.attachments()); got != refs {
+		t.Errorf("attachments = %d, want %d", got, refs)
 	}
 }
 
@@ -94,7 +95,7 @@ func TestCollectImageAttachmentsRunsConcurrently(t *testing.T) {
 func TestCollectImageAttachmentsReportsFirstErrorByIndex(t *testing.T) {
 	first := errors.New("first reference failed")
 	second := errors.New("second reference failed")
-	stub := &stubExecutor{
+	resolver := &stubResolver{
 		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
 			switch rawURL {
 			case "b":
@@ -107,7 +108,7 @@ func TestCollectImageAttachmentsReportsFirstErrorByIndex(t *testing.T) {
 			}
 		},
 	}
-	g := newStubGenerator(stub)
+	g, _ := newStubGenerator(t, resolver)
 
 	_, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c"))
 	if !errors.Is(err, first) {
@@ -118,13 +119,13 @@ func TestCollectImageAttachmentsReportsFirstErrorByIndex(t *testing.T) {
 // TestCollectImageAttachmentsPropagatesCancellation は、呼び出し側の context 終了が
 // 打ち切り理由としてそのまま返ることを確認します。
 func TestCollectImageAttachmentsPropagatesCancellation(t *testing.T) {
-	stub := &stubExecutor{
+	resolver := &stubResolver{
 		resolve: func(ctx context.Context, _ string) (gemini.Attachment, error) {
 			<-ctx.Done()
 			return gemini.Attachment{}, ctx.Err()
 		},
 	}
-	g := newStubGenerator(stub)
+	g, _ := newStubGenerator(t, resolver)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -138,12 +139,37 @@ func TestCollectImageAttachmentsPropagatesCancellation(t *testing.T) {
 	}
 }
 
+// TestCollectImageAttachmentsSkipsEmpty は、参照先を持たない要素が resolver へ
+// 渡らず、送信からも落ちることを確認します。テキストのみの生成や「このキャラクターには
+// 参照画像が無い」を表現するため、エラーにはしません。
+func TestCollectImageAttachmentsSkipsEmpty(t *testing.T) {
+	called := false
+	resolver := &stubResolver{resolve: func(context.Context, string) (gemini.Attachment, error) {
+		called = true
+		return gemini.Attachment{MIMEType: "image/png", Data: []byte("x")}, nil
+	}}
+	g, client := newStubGenerator(t, resolver)
+
+	_, err := g.Generate(context.Background(), ports.ImageRequest{
+		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "p"},
+		Images:            []ports.ImageURI{{}},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if called {
+		t.Error("空の参照が resolver へ渡っています")
+	}
+	if got := len(client.attachments()); got != 0 {
+		t.Errorf("attachments = %d, want 0", got)
+	}
+}
+
 // TestAutoSeedFillsMissingSeedByDefault は、シード未指定の生成でも既定で UsedSeed が
 // 実際に送ったシードを指すことを確認します。0 のままだと「同条件での再生成」の記録が
 // 嘘になります（以前はオプトインで、有効にしていない下流が誤記録していました）。
 func TestAutoSeedFillsMissingSeedByDefault(t *testing.T) {
-	stub := &stubExecutor{}
-	g := newStubGenerator(stub)
+	g, client := newStubGenerator(t, &stubResolver{})
 
 	resp, err := g.Generate(context.Background(), ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "a cat"},
@@ -152,11 +178,12 @@ func TestAutoSeedFillsMissingSeedByDefault(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	if stub.lastOptions.Seed == nil {
+	sent := client.options().Seed
+	if sent == nil {
 		t.Fatal("Seed was not sent to the API")
 	}
-	if resp.UsedSeed != *stub.lastOptions.Seed {
-		t.Errorf("UsedSeed = %d, want the seed actually sent (%d)", resp.UsedSeed, *stub.lastOptions.Seed)
+	if resp.UsedSeed != *sent {
+		t.Errorf("UsedSeed = %d, want the seed actually sent (%d)", resp.UsedSeed, *sent)
 	}
 	if resp.UsedSeed <= 0 {
 		t.Errorf("UsedSeed = %d, want a usable seed", resp.UsedSeed)
@@ -165,8 +192,7 @@ func TestAutoSeedFillsMissingSeedByDefault(t *testing.T) {
 
 // TestAutoSeedKeepsExplicitSeed は、明示されたシードを上書きしないことを確認します。
 func TestAutoSeedKeepsExplicitSeed(t *testing.T) {
-	stub := &stubExecutor{}
-	g := newStubGenerator(stub)
+	g, _ := newStubGenerator(t, &stubResolver{})
 
 	seed := int64(4242)
 	resp, err := g.Generate(context.Background(), ports.ImageRequest{
@@ -186,94 +212,14 @@ func TestAutoSeedKeepsExplicitSeed(t *testing.T) {
 // TestWithoutAutoSeedLeavesSeedUnset は、WithoutAutoSeed 指定時はシードを送らない
 // ことを確認します（API 側がランダムに選び、UsedSeed は 0 のまま）。
 func TestWithoutAutoSeedLeavesSeedUnset(t *testing.T) {
-	stub := &stubExecutor{}
-	g := newStubGenerator(stub, WithoutAutoSeed())
+	g, client := newStubGenerator(t, &stubResolver{}, WithoutAutoSeed())
 
 	if _, err := g.Generate(context.Background(), ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "a cat"},
 	}); err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
-	if stub.lastOptions.Seed != nil {
-		t.Errorf("Seed = %d, want no seed with WithoutAutoSeed", *stub.lastOptions.Seed)
-	}
-}
-
-func TestCollectImageParts(t *testing.T) {
-	ctx := context.Background()
-
-	// 1. モックのセットアップ
-	// Vertex AI モードをシミュレートするモック
-	mockAI := &mockAIClient{vertexAI: true}
-
-	// GeminiImageCore の初期化 (reader や httpClient は nil でもこのテスト範囲なら動きますが、
-	// 本来は mockReader 等を渡すのが安全です)
-	core, _ := NewGeminiImageCore(GeminiImageCoreConfig{
-		AIClient: mockAI, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
-		Cache: &mockCache{}, CacheTTL: 0, Compress: true,
-	})
-
-	g := &GeminiGenerator{
-		core: core,
-	}
-
-	tests := []struct {
-		name     string
-		isVertex bool
-		uris     []ports.ImageURI
-		verify   func(t *testing.T, attachments []gemini.Attachment)
-	}{
-		{
-			name:     "Vertex AI モードで GCS URI を処理",
-			isVertex: true,
-			uris: []ports.ImageURI{
-				{ReferenceURL: "gs://my-bucket/char.png"},
-			},
-			verify: func(t *testing.T, attachments []gemini.Attachment) {
-				if len(attachments) != 1 {
-					t.Fatalf("添付が生成されていません")
-				}
-				got := attachments[0]
-				if got.URI != "gs://my-bucket/char.png" || got.MIMEType != "image/png" {
-					t.Errorf("GCSパスが正しくセットされていません: %+v", got)
-				}
-			},
-		},
-		{
-			name:     "Gemini API モードで FileAPIURI を優先",
-			isVertex: false,
-			uris: []ports.ImageURI{
-				{
-					ReferenceURL: "https://example.com/ignore.jpg",
-					FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/abc-123",
-				},
-			},
-			verify: func(t *testing.T, attachments []gemini.Attachment) {
-				if len(attachments) != 1 {
-					t.Fatalf("添付が生成されていません")
-				}
-				if got := attachments[0].URI; got != "https://generativelanguage.googleapis.com/v1beta/files/abc-123" {
-					t.Errorf("FileAPIURI が優先されていません: %s", got)
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// テストケースごとに独立したモックとジェネレータを初期化
-			mockAI = &mockAIClient{vertexAI: tt.isVertex}
-			core, _ = NewGeminiImageCore(GeminiImageCoreConfig{
-				AIClient: mockAI, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
-				Cache: &mockCache{}, CacheTTL: 0, Compress: true,
-			})
-			g = &GeminiGenerator{core: core}
-
-			attachments, err := g.collectImageAttachments(ctx, tt.uris)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			tt.verify(t, attachments)
-		})
+	if sent := client.options().Seed; sent != nil {
+		t.Errorf("Seed = %d, want no seed with WithoutAutoSeed", *sent)
 	}
 }

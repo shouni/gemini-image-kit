@@ -12,23 +12,21 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// failingExecutor は指定したプロンプトの実行だけを失敗させるスタブです。
-type failingExecutor struct {
-	stubExecutor
-	failPrompt string
-	failErr    error
-}
-
-func (f *failingExecutor) executeRequest(ctx context.Context, model, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
-	if f.failPrompt != "" && prompt == f.failPrompt {
-		return nil, f.failErr
-	}
-	return f.stubExecutor.executeRequest(ctx, model, prompt, attachments, opts)
-}
-
 func batchRequest(prompt string) ports.ImageRequest {
 	return ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: prompt},
+	}
+}
+
+// failOnPrompt は、指定したプロンプトの生成だけを失敗させるクライアント挙動です。
+func failOnPrompt(prompt string, err error) func(context.Context, string, string) (*gemini.Response, error) {
+	return func(_ context.Context, _, got string) (*gemini.Response, error) {
+		if got == prompt {
+			return nil, err
+		}
+		return &gemini.Response{
+			Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("stub-image")}},
+		}, nil
 	}
 }
 
@@ -37,8 +35,8 @@ func batchRequest(prompt string) ports.ImageRequest {
 // 1件の失敗で支払い済みの成果物を捨ててはいけません。
 func TestGenerateBatchKeepsPartialResults(t *testing.T) {
 	boom := errors.New("generation failed")
-	stub := &failingExecutor{failPrompt: "b", failErr: boom}
-	g := &GeminiGenerator{core: stub, autoSeed: true, maxConcurrency: 1}
+	g, client := newStubGenerator(t, &stubResolver{})
+	client.generate = failOnPrompt("b", boom)
 
 	results, err := g.GenerateBatch(context.Background(),
 		[]ports.ImageRequest{batchRequest("a"), batchRequest("b"), batchRequest("c")})
@@ -60,8 +58,7 @@ func TestGenerateBatchKeepsPartialResults(t *testing.T) {
 // TestGenerateBatchAllSuccessReturnsNilError は、全件成功時に error が nil で
 // あることを確認します（errors.Join が nil だけを受けると nil を返す契約に乗る）。
 func TestGenerateBatchAllSuccessReturnsNilError(t *testing.T) {
-	stub := &stubExecutor{}
-	g := newStubGenerator(stub, WithMaxConcurrency(3))
+	g, _ := newStubGenerator(t, &stubResolver{}, WithMaxConcurrency(3))
 
 	results, err := g.GenerateBatch(context.Background(),
 		[]ports.ImageRequest{batchRequest("a"), batchRequest("b")})
@@ -80,8 +77,8 @@ func TestGenerateBatchAllSuccessReturnsNilError(t *testing.T) {
 // 突き合わせない限り失敗したリクエストを特定できません。
 func TestGenerateBatchErrorsCarryRequestIndex(t *testing.T) {
 	boom := errors.New("generation failed")
-	stub := &failingExecutor{failPrompt: "b", failErr: boom}
-	g := &GeminiGenerator{core: stub, autoSeed: true, maxConcurrency: 1}
+	g, client := newStubGenerator(t, &stubResolver{})
+	client.generate = failOnPrompt("b", boom)
 
 	_, err := g.GenerateBatch(context.Background(),
 		[]ports.ImageRequest{batchRequest("a"), batchRequest("b"), batchRequest("c")})
@@ -100,8 +97,7 @@ func TestGenerateBatchErrorsCarryRequestIndex(t *testing.T) {
 // 1 件に畳まれることを確認します。件数ぶん同じ context.Canceled を並べると、
 // 大きなバッチのキャンセルでエラーが読めなくなります。
 func TestGenerateBatchFoldsNotStartedRequests(t *testing.T) {
-	stub := &stubExecutor{}
-	g := newStubGenerator(stub)
+	g, _ := newStubGenerator(t, &stubResolver{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -128,8 +124,7 @@ func TestGenerateBatchFoldsNotStartedRequests(t *testing.T) {
 // 発射枠を待たされないことを確認します。以前は 60s 間隔の設定でモデル名が空の
 // リクエストを弾くのに 60 秒掛かり、しかも発射枠を 1 つ消費していました。
 func TestGenerateValidatesBeforeRateLimit(t *testing.T) {
-	stub := &stubExecutor{}
-	g := newStubGenerator(stub, WithRateLimit(time.Hour, 1))
+	g, _ := newStubGenerator(t, &stubResolver{}, WithRateLimit(time.Hour, 1))
 
 	// 最初の 1 回でバーストを使い切る。以降の待機は 1 時間。
 	if _, err := g.Generate(context.Background(), batchRequest("p")); err != nil {
@@ -152,8 +147,7 @@ func TestGenerateValidatesBeforeRateLimit(t *testing.T) {
 
 // TestGenerateAppliesRateLimit は、WithRateLimit が呼び出し間隔を空けることを確認します。
 func TestGenerateAppliesRateLimit(t *testing.T) {
-	stub := &stubExecutor{}
-	g := newStubGenerator(stub, WithRateLimit(30*time.Millisecond, 1))
+	g, _ := newStubGenerator(t, &stubResolver{}, WithRateLimit(30*time.Millisecond, 1))
 
 	start := time.Now()
 	for range 3 {
@@ -170,25 +164,20 @@ func TestGenerateAppliesRateLimit(t *testing.T) {
 // TestGenerateRequestTimeoutBoundsCall は、WithRequestTimeout が1回の生成を
 // 打ち切ることを確認します。
 func TestGenerateRequestTimeoutBoundsCall(t *testing.T) {
-	slow := &slowExecutor{delay: 100 * time.Millisecond}
-	g := &GeminiGenerator{core: slow, autoSeed: true, maxConcurrency: 1, requestTimeout: 5 * time.Millisecond}
+	g, client := newStubGenerator(t, &stubResolver{}, WithRequestTimeout(5*time.Millisecond))
+	client.generate = func(ctx context.Context, _, _ string) (*gemini.Response, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			return &gemini.Response{
+				Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("stub-image")}},
+			}, nil
+		}
+	}
 
 	_, err := g.Generate(context.Background(), batchRequest("p"))
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
-	}
-}
-
-type slowExecutor struct {
-	stubExecutor
-	delay time.Duration
-}
-
-func (s *slowExecutor) executeRequest(ctx context.Context, model, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(s.delay):
-		return s.stubExecutor.executeRequest(ctx, model, prompt, attachments, opts)
 	}
 }

@@ -9,9 +9,13 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// executeRequest は Gemini API を呼び出し、レスポンスをパースします。
-func (c *GeminiImageCore) executeRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
-	resp, err := c.aiClient.GenerateWithAttachments(ctx, model, prompt, attachments, opts)
+// executeRequest はモデルを呼び出し、レスポンスをパースします。
+//
+// GenerateWithAttachments はプロンプトを添付より前に置きます。この順序は実際の
+// カバーアート用プロンプトで images-then-prompt の形と比較測定してあり、差は
+// 実行ごとのばらつきの範囲だったため、順序の切り替えノブは設けていません。
+func (g *Generator) executeRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+	resp, err := g.aiClient.GenerateWithAttachments(ctx, model, prompt, attachments, opts)
 	if err != nil {
 		return nil, err
 	}

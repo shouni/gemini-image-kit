@@ -42,9 +42,9 @@ func buildFinalPrompt(prompt, negative string) string {
 // 呼び出し側が未指定の項目にバックエンド既定を補うことだけです。呼び出し側が明示
 // した SafetySettings / PersonGeneration は尊重します（以前は無条件に上書きしており、
 // 利用側が安全フィルタを厳しくする手段がありませんでした）。
-func (g *GeminiGenerator) toOptions(req ports.GenerationOptions) gemini.GenerateOptions {
+func (g *Generator) toOptions(req ports.GenerationOptions) gemini.GenerateOptions {
 	opts := req.GenerateOptions
-	isVertex := g.core.IsVertexAI()
+	isVertex := g.isVertexAI
 
 	if opts.SafetySettings == nil {
 		opts.SafetySettings = gemini.NewSafetySettings(safetyThreshold(isVertex))

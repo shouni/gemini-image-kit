@@ -1,3 +1,9 @@
+// Package generator は、Gemini API / Vertex AI 上の画像モデルによる画像生成を実行します。
+//
+// 参照画像の送り方は ports.ReferenceResolver として外から注入します。gs:// をそのまま
+// 参照するのか、File API へ上げて使い回すのか、取得してインラインで送るのかは
+// バックエンドと運用で変わるためです。依存（取得・キャッシュ）は選んだ resolver だけが
+// 要求するので、gs:// しか使わない構成では何も渡さずに済みます。
 package generator
 
 import (
@@ -13,33 +19,30 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// GeminiGenerator がポートを満たすことをコンパイル時に保証します。
-var _ ports.BatchImageGenerator = (*GeminiGenerator)(nil)
+// Generator がポートを満たすことをコンパイル時に保証します。
+var _ ports.BatchImageGenerator = (*Generator)(nil)
 
-// GeminiGenerator は高レベルな画像生成ロジックを担当します。
+// Generator は画像生成の実装です。
 //
-// レート制限・並列度・リクエストタイムアウトを内蔵しており、複数画像の生成で
-// 利用側が errgroup + rate.Limiter を自前で組む必要はありません（以前は 3 つの
-// 下流リポジトリがそれぞれ同じガードを再実装していました）。
-type GeminiGenerator struct {
-	core           imageExecutor
+// レート制限・並列度・リクエストタイムアウトを内蔵しており、利用側が errgroup +
+// rate.Limiter を自前で組む必要はありません（かつては下流の 3 リポジトリが
+// それぞれ同じガードを再実装していました）。
+//
+// 以前あった GeminiImageCore との 2 層構造は持ちません。あの分離は取得・アップロード・
+// 圧縮を隔離するためのもので、それらが resolver へ移った以上、隔離する対象が
+// 残っていないためです。
+type Generator struct {
+	aiClient       gemini.Generator
+	resolver       ports.ReferenceResolver
+	isVertexAI     bool
 	autoSeed       bool
 	limiter        *rate.Limiter
 	maxConcurrency int
 	requestTimeout time.Duration
 }
 
-// imageExecutor は GeminiGenerator が依存する下位層（GeminiImageCore）の面です。
-// パッケージ外に公開しないのは、この分割が実装の都合であって利用側の契約では
-// ないためです（外部の利用者は ports.ImageGenerator に依存します）。
-type imageExecutor interface {
-	executeRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error)
-	resolveReference(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error)
-	IsVertexAI() bool
-}
-
-// Option は GeminiGenerator の任意設定です。
-type Option func(*GeminiGenerator)
+// Option は Generator の任意設定です。
+type Option func(*Generator)
 
 // WithoutAutoSeed は、シード未指定のリクエストへの自動採番を無効にします。
 //
@@ -51,7 +54,7 @@ type Option func(*GeminiGenerator)
 //
 // このオプションは、シード管理を完全に呼び出し側で行う場合にのみ使ってください。
 func WithoutAutoSeed() Option {
-	return func(g *GeminiGenerator) {
+	return func(g *Generator) {
 		g.autoSeed = false
 	}
 }
@@ -62,7 +65,7 @@ func WithoutAutoSeed() Option {
 // スループットは WithMaxConcurrency によらず 1/interval で頭打ちになります。
 // 発射間隔と並列度の両方を大きくする設定は矛盾しています。
 func WithRateLimit(interval time.Duration, burst int) Option {
-	return func(g *GeminiGenerator) {
+	return func(g *Generator) {
 		if interval <= 0 {
 			g.limiter = nil
 			return
@@ -77,7 +80,7 @@ func WithRateLimit(interval time.Duration, burst int) Option {
 // WithMaxConcurrency は、GenerateBatch の最大並列数を設定します。
 // 1 以下（既定は 1）なら逐次実行です。
 func WithMaxConcurrency(n int) Option {
-	return func(g *GeminiGenerator) {
+	return func(g *Generator) {
 		if n > 0 {
 			g.maxConcurrency = n
 		}
@@ -88,19 +91,51 @@ func WithMaxConcurrency(n int) Option {
 // 0 以下（既定）は無制限で、呼び出し側の context にのみ従います。
 // 画像生成は分単位で掛かることがあるため、余裕を持った値にしてください。
 func WithRequestTimeout(d time.Duration) Option {
-	return func(g *GeminiGenerator) {
+	return func(g *Generator) {
 		g.requestTimeout = d
 	}
 }
 
-// NewGeminiGenerator は新しい GeminiGenerator を作成します。
-func NewGeminiGenerator(core *GeminiImageCore, opts ...Option) (*GeminiGenerator, error) {
-	if core == nil {
-		return nil, ErrExecutorRequired
+// New は Generator を作成します。
+//
+// client は gemini.Generator（GenerateWithAttachments の 1 メソッド）で足ります。
+// gemini.Model を要求しないのは、File API 管理（UploadFile / DeleteFile）が
+// FileAPIResolver 側の関心になり、それを使わない構成のテスト用フェイクに実装させて
+// しまうためです。
+//
+// resolver は必須です。既定を用意すると、参照の送り方という運用上の判断を
+// キットが黙って決めることになります。典型的な組み合わせは次の 2 つです。
+//
+//	// Vertex AI: gs:// はそのまま参照し、それ以外は取得してインライン
+//	generator.New(client, generator.NewResolverChain(generator.NewGCSResolver(), fetchResolver))
+//
+//	// Gemini API: File API へ上げて使い回し、失敗したら取得してインライン
+//	generator.New(client, generator.NewResolverChain(fileAPIResolver, fetchResolver))
+//
+// バックエンド判定はオプショナルインターフェースとして探ります。実クライアント
+// （*gemini.Client）は gemini.BackendInspector を満たすため、Vertex AI 専用の
+// resolver に Gemini API のクライアントを組み合わせた取り違えは ErrVertexAIRequired に
+// なります。安全設定と人物生成の既定値も、この判定で切り替わります。
+func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Option) (*Generator, error) {
+	if client == nil {
+		return nil, ErrAIClientRequired
+	}
+	if resolver == nil {
+		return nil, ErrResolverRequired
 	}
 
-	g := &GeminiGenerator{
-		core:           core,
+	isVertexAI := false
+	if inspector, ok := client.(gemini.BackendInspector); ok {
+		isVertexAI = inspector.IsVertexAI()
+	}
+	if v, ok := resolver.(vertexOnlyResolver); ok && v.requiresVertexAI() && !isVertexAI {
+		return nil, ErrVertexAIRequired
+	}
+
+	g := &Generator{
+		aiClient:       client,
+		resolver:       resolver,
+		isVertexAI:     isVertexAI,
 		autoSeed:       true,
 		maxConcurrency: 1,
 	}
@@ -112,14 +147,14 @@ func NewGeminiGenerator(core *GeminiImageCore, opts ...Option) (*GeminiGenerator
 	return g, nil
 }
 
-// IsVertexAI は、Vertex AI バックエンドを使用しているかを確認します。
-func (g *GeminiGenerator) IsVertexAI() bool {
-	return g.core.IsVertexAI()
+// IsVertexAI は、Vertex AI バックエンドを使用しているかを返します。
+func (g *Generator) IsVertexAI() bool {
+	return g.isVertexAI
 }
 
 // Generate は、参照画像（0〜複数）と構成パラメータに基づいて 1 枚の画像を生成します。
 // WithRateLimit / WithRequestTimeout が設定されていれば、この呼び出しにも適用されます。
-func (g *GeminiGenerator) Generate(ctx context.Context, req ports.ImageRequest) (*ports.ImageResponse, error) {
+func (g *Generator) Generate(ctx context.Context, req ports.ImageRequest) (*ports.ImageResponse, error) {
 	// 検証はレート制限の待機より前に行う。送信しないと決まったリクエストを発射枠で
 	// 待たせると、発射間隔がそのまま失敗の検出遅れになる（60s 間隔の設定なら、
 	// モデル名が空のリクエスト 1 件を弾くのに 60 秒掛かった上、発射枠も 1 つ消えていた）。
@@ -139,13 +174,13 @@ func (g *GeminiGenerator) Generate(ctx context.Context, req ports.ImageRequest) 
 	ctx, cancel := g.requestContext(ctx)
 	defer cancel()
 
-	// 参照画像の解決は GCS / HTTP の往復を伴うため、検証と違って前倒しできない。
+	// 参照の解決は resolver 次第で I/O を伴うため、検証と違って前倒しできない。
 	// リクエストタイムアウトの内側で行う。
 	attachments, err := g.collectImageAttachments(ctx, req.Images)
 	if err != nil {
 		return nil, err
 	}
-	return g.core.executeRequest(ctx, prepared.model, prepared.prompt, attachments, prepared.opts)
+	return g.executeRequest(ctx, prepared.model, prepared.prompt, attachments, prepared.opts)
 }
 
 // GenerateBatch は複数のリクエストを設定された並列度・レート制限の下で実行します。
@@ -154,7 +189,7 @@ func (g *GeminiGenerator) Generate(ctx context.Context, req ports.ImageRequest) 
 // 破棄しません — 画像 1 枚ごとに生成コストが掛かっており、支払い済みの成果物を
 // 1 件の失敗で捨てないためです。失敗した位置の要素は nil になり、エラーは
 // requests[i] の添字を付けて集約されます（呼び出し側は結果とエラーの両方を見てください）。
-func (g *GeminiGenerator) GenerateBatch(ctx context.Context, reqs []ports.ImageRequest) ([]*ports.ImageResponse, error) {
+func (g *Generator) GenerateBatch(ctx context.Context, reqs []ports.ImageRequest) ([]*ports.ImageResponse, error) {
 	results := make([]*ports.ImageResponse, len(reqs))
 	errs := make([]error, len(reqs))
 
@@ -211,7 +246,7 @@ func joinBatchErrors(errs []error, notStarted error, skipped int) error {
 }
 
 // requestContext は WithRequestTimeout を適用した context を返します。
-func (g *GeminiGenerator) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (g *Generator) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if g.requestTimeout <= 0 {
 		return ctx, func() {}
 	}
@@ -230,7 +265,7 @@ type preparedRequest struct {
 //
 // Generate から分けているのは、この工程をレート制限の待機より前に置くためです
 // （不正なリクエストを発射枠で待たせない）。
-func (g *GeminiGenerator) prepare(req ports.GenerationOptions) (preparedRequest, error) {
+func (g *Generator) prepare(req ports.GenerationOptions) (preparedRequest, error) {
 	if req.Model == "" {
 		return preparedRequest{}, ErrModelRequired
 	}
