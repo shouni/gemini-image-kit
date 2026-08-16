@@ -27,10 +27,6 @@ var _ ports.BatchImageGenerator = (*Generator)(nil)
 // レート制限・並列度・リクエストタイムアウトを内蔵しており、利用側が errgroup +
 // rate.Limiter を自前で組む必要はありません（かつては下流の 3 リポジトリが
 // それぞれ同じガードを再実装していました）。
-//
-// 以前あった GeminiImageCore との 2 層構造は持ちません。あの分離は取得・アップロード・
-// 圧縮を隔離するためのもので、それらが resolver へ移った以上、隔離する対象が
-// 残っていないためです。
 type Generator struct {
 	aiClient       gemini.Generator
 	resolver       ports.ReferenceResolver
@@ -112,10 +108,9 @@ func WithRequestTimeout(d time.Duration) Option {
 //	// Gemini API: File API へ上げて使い回し、失敗したら取得してインライン
 //	generator.New(client, generator.NewResolverChain(fileAPIResolver, fetchResolver))
 //
-// バックエンド判定はオプショナルインターフェースとして探ります。実クライアント
-// （*gemini.Client）は gemini.BackendInspector を満たすため、Vertex AI 専用の
-// resolver に Gemini API のクライアントを組み合わせた取り違えは ErrVertexAIRequired に
-// なります。安全設定と人物生成の既定値も、この判定で切り替わります。
+// バックエンド判定は gemini.BackendInspector をオプショナルインターフェースとして
+// 探ります。安全設定と人物生成の既定値がこの判定で切り替わり、Vertex AI 専用の
+// resolver との取り違えもここで ErrVertexAIRequired になります。
 func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Option) (*Generator, error) {
 	if client == nil {
 		return nil, ErrAIClientRequired
@@ -145,11 +140,6 @@ func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Opti
 		}
 	}
 	return g, nil
-}
-
-// IsVertexAI は、Vertex AI バックエンドを使用しているかを返します。
-func (g *Generator) IsVertexAI() bool {
-	return g.isVertexAI
 }
 
 // Generate は、参照画像（0〜複数）と構成パラメータに基づいて 1 枚の画像を生成します。
@@ -224,10 +214,8 @@ func (g *Generator) GenerateBatch(ctx context.Context, reqs []ports.ImageRequest
 
 // joinBatchErrors は各リクエストのエラーを添字付きで集約します。
 //
-// 添字を添えるのは、参照画像の添字（images[i]）だけではどのリクエストで起きた
-// 失敗か分からないためです。3 件のバッチで 2 件目だけが落ちても、エラーは失敗した
-// 参照名しか言わず、呼び出し側は results の nil 位置と突き合わせない限り
-// 特定できませんでした。
+// 添字を添えるのは、失敗したのが何番目のリクエストかを示す情報が他に無いためです
+// （参照画像の添字 images[i] では、どのリクエストの話か分かりません）。
 //
 // 開始前に打ち切られた分は 1 件に畳みます。100 件のバッチをキャンセルすると、
 // 同じ context.Canceled が 100 行並ぶだけになるためです。
@@ -262,9 +250,6 @@ type preparedRequest struct {
 }
 
 // prepare はリクエストを検証し、送信用の形へ組み立てます。I/O は行いません。
-//
-// Generate から分けているのは、この工程をレート制限の待機より前に置くためです
-// （不正なリクエストを発射枠で待たせない）。
 func (g *Generator) prepare(req ports.GenerationOptions) (preparedRequest, error) {
 	if req.Model == "" {
 		return preparedRequest{}, ErrModelRequired
@@ -282,7 +267,6 @@ func (g *Generator) prepare(req ports.GenerationOptions) (preparedRequest, error
 	return preparedRequest{
 		model:  req.Model,
 		prompt: finalPrompt,
-		// バックエンド既定（安全設定・人物生成）を補う。
-		opts: g.toOptions(req),
+		opts:   g.toOptions(req),
 	}, nil
 }

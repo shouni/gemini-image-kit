@@ -17,7 +17,7 @@ import (
 // 依存しているため、変更しないでください。
 const negativePromptSeparator = "\n\n[Negative Prompt]\n"
 
-// buildFinalPrompt はプロンプトと否定プロンプトを結合します。
+// buildFinalPrompt はプロンプトとネガティブプロンプトを結合します。
 func buildFinalPrompt(prompt, negative string) string {
 	p := strings.TrimSpace(prompt)
 	n := strings.TrimSpace(negative)
@@ -39,9 +39,9 @@ func buildFinalPrompt(prompt, negative string) string {
 // toOptions は Gemini へのリクエストオプションを構築します。
 //
 // GenerationOptions は gemini.GenerateOptions を埋め込んでいるため、ここでの仕事は
-// 呼び出し側が未指定の項目にバックエンド既定を補うことだけです。呼び出し側が明示
-// した SafetySettings / PersonGeneration は尊重します（以前は無条件に上書きしており、
-// 利用側が安全フィルタを厳しくする手段がありませんでした）。
+// 呼び出し側が未指定の項目にバックエンド既定を補うことだけです。明示された
+// SafetySettings / PersonGeneration は尊重します — 無条件に上書きすると、利用側が
+// 安全フィルタを厳しくする手段が無くなるためです。
 func (g *Generator) toOptions(req ports.GenerationOptions) gemini.GenerateOptions {
 	opts := req.GenerateOptions
 	isVertex := g.isVertexAI

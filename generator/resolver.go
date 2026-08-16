@@ -24,22 +24,14 @@ type vertexOnlyResolver interface {
 
 // ResolverChain は複数の resolver を順に試します。
 //
-// ports.ErrResolverNotApplicable（管轄外）だけが次への合図です。それ以外のエラーは
-// その場で返します — 取得失敗で次へ流すと、ネットワーク障害が「参照を解決できません」に
-// すり替わって原因が消えるためです。
+// 次へ進む合図は ports.ErrResolverNotApplicable（管轄外）だけで、それ以外のエラーは
+// その場で返します。誰も扱えなければ ErrUnresolvedReference になります。
 type ResolverChain struct {
 	resolvers []ports.ReferenceResolver
 }
 
-// NewResolverChain は resolver を並べた解決経路を作ります。
-//
-// 並び順が優先順です。典型的な構成は次の 2 つです。
-//
-//	// Vertex AI: gs:// はそのまま参照し（転送ゼロ）、それ以外は取得してインライン
-//	NewResolverChain(NewGCSResolver(), fetchResolver)
-//
-//	// Gemini API: File API へ上げて URI 参照し、失敗したら取得してインライン
-//	NewResolverChain(fileAPIResolver, fetchResolver)
+// NewResolverChain は resolver を並べた解決経路を作ります。並び順が優先順です。
+// 典型的な組み合わせは New のドキュメントを参照してください。
 func NewResolverChain(resolvers ...ports.ReferenceResolver) *ResolverChain {
 	return &ResolverChain{resolvers: resolvers}
 }
@@ -76,7 +68,7 @@ func (c *ResolverChain) requiresVertexAI() bool {
 // 参照が gs:// だけで済む構成なら、これ 1 つで足ります。
 type GCSResolver struct{}
 
-// NewGCSResolver は gs:// 参照をそのまま渡す resolver を作ります（Vertex AI 専用）。
+// NewGCSResolver は GCSResolver を作ります。設定項目はありません。
 func NewGCSResolver() *GCSResolver { return &GCSResolver{} }
 
 func (r *GCSResolver) requiresVertexAI() bool { return true }
@@ -157,9 +149,8 @@ func (r *FetchResolver) Resolve(ctx context.Context, uri ports.ImageURI) (gemini
 
 // fileAttachment は URI 参照の添付を生成します。
 //
-// 拡張子から MIME type を判別できない場合は MIMEType を設定しません。
-// 誤った型を申告するとサーバー側のデコードが失敗しうるため、
-// 推測できないときはサーバーのコンテンツ判定に委ねます。
+// MIME type は mimeHintURI の拡張子から推測します。判別できない場合は設定しません
+// （理由は imgutil.GuessMIMEType を参照）。
 func fileAttachment(fileURI, mimeHintURI string) gemini.Attachment {
 	return gemini.Attachment{URI: fileURI, MIMEType: imgutil.GuessMIMEType(mimeHintURI)}
 }

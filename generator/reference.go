@@ -17,8 +17,8 @@ import (
 // では参照が増えるほど直列の待ち時間がそのまま積み上がるためです。結果は入力順のまま
 // 返します（参照画像の並び順はモデルの解釈に影響します）。
 //
-// 並行実行するため、注入する ports.ReferenceResolver と ports.ImageCacher は
-// 同時アクセス安全である必要があります。
+// 並行実行するため、注入する ports.ReferenceResolver は同時アクセス安全で
+// ある必要があります。
 func (g *Generator) collectImageAttachments(ctx context.Context, uris []ports.ImageURI) ([]gemini.Attachment, error) {
 	if len(uris) <= 1 {
 		return g.collectSequentially(ctx, uris)

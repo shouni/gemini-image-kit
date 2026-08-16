@@ -112,7 +112,7 @@ func newCompression(enabled bool, quality int) compression {
 	return compression{enabled: enabled, quality: quality}
 }
 
-// applies は、指定された MIMEType の画像を圧縮すべきかを返します。
+// applies は、その MIMEType を圧縮対象とするかを返します。
 func (c compression) applies(mimeType string) bool {
 	return c.enabled && imgutil.IsCompressibleMimeType(mimeType)
 }
@@ -148,10 +148,10 @@ func detectUploadSource(br *bufio.Reader) (string, error) {
 
 // isGCSURI は、指定された URI が GCS（Google Cloud Storage）を指すかを判定します。
 //
-// 判定そのものは go-utils に委ねます。公開していないのは、これが URI スキームの
-// 述語であってこのキットの関心ではないためで、利用側は urlpath.IsGCSURI を直接
-// 使ってください。自前実装を持たないのは、述語がズレると「呼び出し側の入力検証は
-// 通ったのに生成で落ちる」という食い違いが生まれるためです。
+// 判定は go-utils に委ねます。自前実装を持つと述語がズレて「呼び出し側の入力検証は
+// 通ったのに生成で落ちる」という食い違いが生まれるためです。公開していないのは、
+// URI スキームの述語がこのキットの関心ではないためで、利用側は urlpath.IsGCSURI を
+// 直接使ってください。
 func isGCSURI(uri string) bool {
 	return urlpath.IsGCSURI(uri)
 }

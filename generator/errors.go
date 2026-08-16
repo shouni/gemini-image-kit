@@ -25,11 +25,9 @@ var (
 	// 既定値を用意しないのは、参照の送り方（gs:// 直参照 / File API / インライン）が
 	// バックエンドと運用で変わり、黙って選ぶと利用側が気付けないためです。
 	ErrResolverRequired = errors.New("imagekit: reference resolver is required")
-	// ErrVertexAIRequired は、Vertex AI 専用の resolver に Gemini API バックエンドの
-	// クライアントが組み合わされた場合に返されます。
-	//
-	// GCSResolver は gs:// をそのまま渡すため、Gemini API バックエンドでは参照が
-	// 一切解決できません。生成時に不可解な失敗をするより、構築時に落とします。
+	// ErrVertexAIRequired は、Vertex AI 専用の resolver（GCSResolver）に Gemini API
+	// バックエンドのクライアントが組み合わされた場合に New が返します。生成時に
+	// 不可解な失敗をするより、構築時に落とします。
 	ErrVertexAIRequired = errors.New("imagekit: resolver requires the Vertex AI backend")
 	// ErrReaderRequired は、resolver に Reader が渡されなかった場合に返されます。
 	ErrReaderRequired = errors.New("imagekit: Reader is required")
@@ -37,8 +35,7 @@ var (
 	ErrHTTPClientRequired = errors.New("imagekit: Downloader is required")
 	// ErrFileManagerRequired は、NewFileAPIResolver に Files が渡されなかった場合に返されます。
 	ErrFileManagerRequired = errors.New("imagekit: FileManager is required")
-	// ErrCacheRequired は、NewFileAPIResolver に Cache が渡されなかった場合に返されます。
-	// アップロード済み参照の使い回しがこの resolver の存在理由であり、
-	// キャッシュ無しでは同じ参照画像を毎回アップロードし直すことになります。
+	// ErrCacheRequired は、NewFileAPIResolver に Cache が渡されなかった場合に返されます
+	// （必須である理由は FileAPIResolverConfig.Cache を参照）。
 	ErrCacheRequired = errors.New("imagekit: Cache is required")
 )

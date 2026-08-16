@@ -30,9 +30,9 @@ type FileAPIResolverConfig struct {
 	Downloader ports.Downloader
 	// Cache はアップロード済み URI の再利用先です。必須。
 	//
-	// 必須なのは、アップロード済み参照の使い回しがこの resolver の存在理由そのもので
-	// あり、キャッシュ無しでは同じ参照画像を毎回上げ直すだけになるためです。
-	// キャッシュを持ちたくない構成では、この resolver ではなく FetchResolver を使ってください。
+	// 必須なのは、アップロードの使い回しがこの resolver の存在理由そのものであり、
+	// キャッシュ無しでは同じ参照画像を毎回上げ直すだけになるためです。キャッシュを
+	// 持ちたくない構成では、この resolver ではなく FetchResolver を使ってください。
 	Cache ports.ImageCacher
 	// CacheTTL はアップロード済みファイルの参照を保持する期間です。
 	//
@@ -119,9 +119,9 @@ func NewFileAPIResolver(cfg FileAPIResolverConfig) (*FileAPIResolver, error) {
 // アップロードに失敗した場合は辞退（ErrResolverNotApplicable）して次の resolver に
 // 委ねます。アップロードは送信量を減らすための最適化であって正しさの要件ではなく、
 // 取得そのものが失敗しているなら後段でも同じ理由で落ちるためです。
-// ただし失敗の原因が呼び出し側のキャンセルである場合はエラーを返します — 以前は
-// キャンセルでも「アップロード失敗」と誤って警告した上でフォールバックし、同じ画像を
-// もう一度フェッチして同じキャンセルで落ちていました（無駄な二重フェッチ + 紛らわしい警告）。
+//
+// ただし失敗の原因が呼び出し側のキャンセルである場合は辞退せずエラーを返します。
+// 辞退すると、同じ画像をもう一度フェッチして同じキャンセルで落ちるだけだからです。
 func (r *FileAPIResolver) Resolve(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
 	if uri.FileAPIURI != "" {
 		return fileAttachment(uri.FileAPIURI, uri.ReferenceURL), nil
@@ -223,8 +223,8 @@ func (r *FileAPIResolver) upload(ctx context.Context, src io.Reader, mimeType, f
 }
 
 // lookupCache は、ソース URI に紐づくアップロード済み URI を取得します。
-// 旧形式（構造体を保存）のエントリは型アサーションに失敗してミス扱いになるため、
-// キャッシュ形式の変更は安全に無視されます。
+// 文字列以外が入っていた場合はミス扱いにするため、キャッシュを共有していて
+// 別形式の値が混ざっても壊れません。
 func (r *FileAPIResolver) lookupCache(sourceURI string) (string, bool) {
 	val, ok := r.cache.Get(cacheKeyFileAPI + sourceURI)
 	if !ok {
@@ -237,12 +237,10 @@ func (r *FileAPIResolver) lookupCache(sourceURI string) (string, bool) {
 	return uri, true
 }
 
-// storeCache は、ソース URI に紐づくアップロード済み URI を保存します。
 func (r *FileAPIResolver) storeCache(sourceURI string, uploadedURI string) {
 	r.cache.Set(cacheKeyFileAPI+sourceURI, uploadedURI, r.expiration)
 }
 
-// log は設定済みロガーを返します。
 func (r *FileAPIResolver) log() *slog.Logger {
 	if r.logger != nil {
 		return r.logger
