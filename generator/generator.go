@@ -3,6 +3,7 @@ package generator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -57,6 +58,9 @@ func WithoutAutoSeed() Option {
 
 // WithRateLimit は、生成リクエストの発射間隔と許容バーストを設定します。
 // interval が 0 以下の場合はレート制限を行いません（既定）。
+//
+// スループットは WithMaxConcurrency によらず 1/interval で頭打ちになります。
+// 発射間隔と並列度の両方を大きくする設定は矛盾しています。
 func WithRateLimit(interval time.Duration, burst int) Option {
 	return func(g *GeminiGenerator) {
 		if interval <= 0 {
@@ -116,6 +120,16 @@ func (g *GeminiGenerator) IsVertexAI() bool {
 // Generate は、参照画像（0〜複数）と構成パラメータに基づいて 1 枚の画像を生成します。
 // WithRateLimit / WithRequestTimeout が設定されていれば、この呼び出しにも適用されます。
 func (g *GeminiGenerator) Generate(ctx context.Context, req ports.ImageRequest) (*ports.ImageResponse, error) {
+	// 検証はレート制限の待機より前に行う。送信しないと決まったリクエストを発射枠で
+	// 待たせると、発射間隔がそのまま失敗の検出遅れになる（60s 間隔の設定なら、
+	// モデル名が空のリクエスト 1 件を弾くのに 60 秒掛かった上、発射枠も 1 つ消えていた）。
+	prepared, err := g.prepare(req.GenerationOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// レート制限の待機はリクエストタイムアウトの外側で行う。待たされた時間を
+	// 1 回あたりの上限に含めると、混雑がそのままタイムアウトに化けてしまう。
 	if g.limiter != nil {
 		if err := g.limiter.Wait(ctx); err != nil {
 			return nil, err
@@ -125,7 +139,13 @@ func (g *GeminiGenerator) Generate(ctx context.Context, req ports.ImageRequest) 
 	ctx, cancel := g.requestContext(ctx)
 	defer cancel()
 
-	return g.generate(ctx, req.GenerationOptions, req.Images)
+	// 参照画像の解決は GCS / HTTP の往復を伴うため、検証と違って前倒しできない。
+	// リクエストタイムアウトの内側で行う。
+	attachments, err := g.collectImageAttachments(ctx, req.Images)
+	if err != nil {
+		return nil, err
+	}
+	return g.core.executeRequest(ctx, prepared.model, prepared.prompt, attachments, prepared.opts)
 }
 
 // GenerateBatch は複数のリクエストを設定された並列度・レート制限の下で実行します。
@@ -133,37 +153,61 @@ func (g *GeminiGenerator) Generate(ctx context.Context, req ports.ImageRequest) 
 // 結果は入力と同じ順序で返します。一部の失敗で残りを打ち切らず、成功した結果も
 // 破棄しません — 画像 1 枚ごとに生成コストが掛かっており、支払い済みの成果物を
 // 1 件の失敗で捨てないためです。失敗した位置の要素は nil になり、エラーは
-// errors.Join で集約されます（呼び出し側は結果とエラーの両方を見てください）。
+// requests[i] の添字を付けて集約されます（呼び出し側は結果とエラーの両方を見てください）。
 func (g *GeminiGenerator) GenerateBatch(ctx context.Context, reqs []ports.ImageRequest) ([]*ports.ImageResponse, error) {
 	results := make([]*ports.ImageResponse, len(reqs))
 	errs := make([]error, len(reqs))
 
-	concurrency := g.maxConcurrency
-	if concurrency < 1 {
-		concurrency = 1
-	}
-	sem := make(chan struct{}, concurrency)
+	sem := make(chan struct{}, max(g.maxConcurrency, 1))
+
+	// notStarted は、呼び出し側の context 終了により開始しなかった分の理由です。
+	var notStarted error
+	skipped := 0
 
 	var wg sync.WaitGroup
 	for i := range reqs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+		// 呼び出し側の context が終了していたら新しい生成は始めない
+		// （進行中のものはそれぞれの ctx で打ち切られる）。
+		if err := ctx.Err(); err != nil {
+			notStarted = err
+			skipped++
+			continue
+		}
+		// セマフォは goroutine の内側ではなく、起動の手前で取る。内側で取ると
+		// 並列度が 1 でも件数ぶんの goroutine が起きて待機するだけになる。
+		sem <- struct{}{}
 
-			// 呼び出し側の context が終了していたら新しい生成は始めない
-			// （進行中のものはそれぞれの ctx で打ち切られる）。
-			if err := ctx.Err(); err != nil {
-				errs[i] = err
-				return
-			}
+		wg.Go(func() {
+			defer func() { <-sem }()
 			results[i], errs[i] = g.Generate(ctx, reqs[i])
-		}()
+		})
 	}
 	wg.Wait()
 
-	return results, errors.Join(errs...)
+	return results, joinBatchErrors(errs, notStarted, skipped)
+}
+
+// joinBatchErrors は各リクエストのエラーを添字付きで集約します。
+//
+// 添字を添えるのは、参照画像の添字（images[i]）だけではどのリクエストで起きた
+// 失敗か分からないためです。3 件のバッチで 2 件目だけが落ちても、エラーは失敗した
+// 参照名しか言わず、呼び出し側は results の nil 位置と突き合わせない限り
+// 特定できませんでした。
+//
+// 開始前に打ち切られた分は 1 件に畳みます。100 件のバッチをキャンセルすると、
+// 同じ context.Canceled が 100 行並ぶだけになるためです。
+func joinBatchErrors(errs []error, notStarted error, skipped int) error {
+	joined := make([]error, 0, len(errs)+1)
+	for i, err := range errs {
+		if err == nil {
+			continue
+		}
+		joined = append(joined, fmt.Errorf("requests[%d]: %w", i, err))
+	}
+	if notStarted != nil {
+		joined = append(joined, fmt.Errorf("imagekit: %d request(s) not started: %w", skipped, notStarted))
+	}
+	return errors.Join(joined...)
 }
 
 // requestContext は WithRequestTimeout を適用した context を返します。
@@ -174,14 +218,25 @@ func (g *GeminiGenerator) requestContext(ctx context.Context) (context.Context, 
 	return context.WithTimeout(ctx, g.requestTimeout)
 }
 
-// generate は画像生成のコアロジックです。
-func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOptions, uris []ports.ImageURI) (*ports.ImageResponse, error) {
+// preparedRequest は、検証と組み立てを終えて送信できる状態になったリクエストです。
+// 参照画像だけは I/O を伴うため含まず、Generate が解決して足します。
+type preparedRequest struct {
+	model  string
+	prompt string
+	opts   gemini.GenerateOptions
+}
+
+// prepare はリクエストを検証し、送信用の形へ組み立てます。I/O は行いません。
+//
+// Generate から分けているのは、この工程をレート制限の待機より前に置くためです
+// （不正なリクエストを発射枠で待たせない）。
+func (g *GeminiGenerator) prepare(req ports.GenerationOptions) (preparedRequest, error) {
 	if req.Model == "" {
-		return nil, ErrModelRequired
+		return preparedRequest{}, ErrModelRequired
 	}
 	finalPrompt := buildFinalPrompt(req.Prompt, req.NegativePrompt)
 	if finalPrompt == "" {
-		return nil, ErrEmptyPrompt
+		return preparedRequest{}, ErrEmptyPrompt
 	}
 	// シードを生成側で決めるのは送信前の1回だけ。executeRequest は opts.Seed を
 	// そのまま UsedSeed として返すため、ここで埋めた値が呼び出し側に届く。
@@ -189,13 +244,10 @@ func (g *GeminiGenerator) generate(ctx context.Context, req ports.GenerationOpti
 		req.Seed = newSeed()
 	}
 
-	// 1. 画像アセット（素材）を収集
-	attachments, err := g.collectImageAttachments(ctx, uris)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. バックエンド既定（安全設定・人物生成）を補ったオプション構築
-	opts := g.toOptions(req)
-	return g.core.executeRequest(ctx, req.Model, finalPrompt, attachments, opts)
+	return preparedRequest{
+		model:  req.Model,
+		prompt: finalPrompt,
+		// バックエンド既定（安全設定・人物生成）を補う。
+		opts: g.toOptions(req),
+	}, nil
 }

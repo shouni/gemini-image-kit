@@ -3,6 +3,7 @@ package generator
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,6 +72,81 @@ func TestGenerateBatchAllSuccessReturnsNilError(t *testing.T) {
 		if r == nil {
 			t.Errorf("results[%d] = nil", i)
 		}
+	}
+}
+
+// TestGenerateBatchErrorsCarryRequestIndex は、集約エラーが何番目のリクエストで
+// 起きた失敗かを示すことを確認します。添字が無いと、呼び出し側は results の nil 位置と
+// 突き合わせない限り失敗したリクエストを特定できません。
+func TestGenerateBatchErrorsCarryRequestIndex(t *testing.T) {
+	boom := errors.New("generation failed")
+	stub := &failingExecutor{failPrompt: "b", failErr: boom}
+	g := &GeminiGenerator{core: stub, autoSeed: true, maxConcurrency: 1}
+
+	_, err := g.GenerateBatch(context.Background(),
+		[]ports.ImageRequest{batchRequest("a"), batchRequest("b"), batchRequest("c")})
+	if err == nil {
+		t.Fatal("GenerateBatch() error = nil, want the generation failure")
+	}
+	if !strings.Contains(err.Error(), "requests[1]:") {
+		t.Errorf("error = %q, want it to name requests[1]", err)
+	}
+	if !errors.Is(err, boom) {
+		t.Errorf("error = %v, want it to wrap the generation failure", err)
+	}
+}
+
+// TestGenerateBatchFoldsNotStartedRequests は、打ち切りで開始しなかった分が
+// 1 件に畳まれることを確認します。件数ぶん同じ context.Canceled を並べると、
+// 大きなバッチのキャンセルでエラーが読めなくなります。
+func TestGenerateBatchFoldsNotStartedRequests(t *testing.T) {
+	stub := &stubExecutor{}
+	g := newStubGenerator(stub)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	results, err := g.GenerateBatch(ctx,
+		[]ports.ImageRequest{batchRequest("a"), batchRequest("b"), batchRequest("c")})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if lines := strings.Count(err.Error(), "\n") + 1; lines != 1 {
+		t.Errorf("error has %d lines, want them folded into 1:\n%v", lines, err)
+	}
+	if !strings.Contains(err.Error(), "3 request(s) not started") {
+		t.Errorf("error = %q, want the skipped count", err)
+	}
+	for i, r := range results {
+		if r != nil {
+			t.Errorf("results[%d] = %+v, want nil (not started)", i, r)
+		}
+	}
+}
+
+// TestGenerateValidatesBeforeRateLimit は、送信しないと決まったリクエストが
+// 発射枠を待たされないことを確認します。以前は 60s 間隔の設定でモデル名が空の
+// リクエストを弾くのに 60 秒掛かり、しかも発射枠を 1 つ消費していました。
+func TestGenerateValidatesBeforeRateLimit(t *testing.T) {
+	stub := &stubExecutor{}
+	g := newStubGenerator(stub, WithRateLimit(time.Hour, 1))
+
+	// 最初の 1 回でバーストを使い切る。以降の待機は 1 時間。
+	if _, err := g.Generate(context.Background(), batchRequest("p")); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	invalid := ports.ImageRequest{GenerationOptions: ports.GenerationOptions{Prompt: "p"}}
+	done := make(chan error, 1)
+	go func() { _, err := g.Generate(context.Background(), invalid); done <- err }()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrModelRequired) {
+			t.Fatalf("error = %v, want ErrModelRequired", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("不正なリクエストがレート制限の発射枠を待たされています")
 	}
 }
 
