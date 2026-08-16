@@ -110,7 +110,8 @@ func WithRequestTimeout(d time.Duration) Option {
 //
 // バックエンド判定は gemini.BackendInspector をオプショナルインターフェースとして
 // 探ります。安全設定と人物生成の既定値がこの判定で切り替わり、Vertex AI 専用の
-// resolver との取り違えもここで ErrVertexAIRequired になります。
+// resolver に Gemini API のクライアントを組み合わせた取り違えは ErrVertexAIRequired に
+// なります。バックエンドを申告しないクライアントは弾きません。
 func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Option) (*Generator, error) {
 	if client == nil {
 		return nil, ErrAIClientRequired
@@ -119,11 +120,14 @@ func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Opti
 		return nil, ErrResolverRequired
 	}
 
-	isVertexAI := false
-	if inspector, ok := client.(gemini.BackendInspector); ok {
-		isVertexAI = inspector.IsVertexAI()
-	}
-	if v, ok := resolver.(vertexOnlyResolver); ok && v.requiresVertexAI() && !isVertexAI {
+	inspector, declared := client.(gemini.BackendInspector)
+	isVertexAI := declared && inspector.IsVertexAI()
+
+	// Vertex 専用の resolver を弾くのは、バックエンドが Vertex でないと**申告された**
+	// ときだけです。申告が無いクライアント（テスト用フェイクや、判定を転送しない
+	// ラッパー）は素通しします。「Vertex でない証拠が無い」ことを「Vertex でない」と
+	// 断定すると、実クライアント以外では GCSResolver が一切使えなくなるためです。
+	if v, ok := resolver.(vertexOnlyResolver); ok && v.requiresVertexAI() && declared && !isVertexAI {
 		return nil, ErrVertexAIRequired
 	}
 

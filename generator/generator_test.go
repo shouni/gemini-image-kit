@@ -168,3 +168,29 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 		}
 	})
 }
+
+// backendlessClient は gemini.BackendInspector を実装しないクライアントです。
+// テスト用フェイクや、判定を転送しないラッパーがこの形になります。
+type backendlessClient struct{}
+
+func (backendlessClient) GenerateWithAttachments(context.Context, string, string, []gemini.Attachment, gemini.GenerateOptions) (*gemini.Response, error) {
+	return &gemini.Response{
+		Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("img")}},
+	}, nil
+}
+
+// TestNewAllowsVertexResolverWhenBackendUndeclared は、バックエンドを申告しない
+// クライアントを Vertex 専用 resolver と組み合わせても弾かないことを確認します。
+//
+// 「Vertex でない証拠が無い」ことを「Vertex でない」と断定すると、実クライアント
+// 以外（テストダブル、判定を転送しないラッパー）で GCSResolver が一切使えなくなります。
+// 弾くのは、Vertex でないと明示的に申告されたときだけです。
+func TestNewAllowsVertexResolverWhenBackendUndeclared(t *testing.T) {
+	g, err := New(backendlessClient{}, NewGCSResolver())
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil (バックエンド未申告は素通し)", err)
+	}
+	if g.isVertexAI {
+		t.Error("未申告のクライアントを Vertex と見なしてはいけません")
+	}
+}

@@ -28,6 +28,9 @@ var (
 	// ErrVertexAIRequired は、Vertex AI 専用の resolver（GCSResolver）に Gemini API
 	// バックエンドのクライアントが組み合わされた場合に New が返します。生成時に
 	// 不可解な失敗をするより、構築時に落とします。
+	//
+	// 判定できるのは gemini.BackendInspector を満たすクライアントだけで、申告が
+	// 無い場合は素通しします（詳細は New を参照）。
 	ErrVertexAIRequired = errors.New("imagekit: resolver requires the Vertex AI backend")
 	// ErrReaderRequired は、resolver に Reader が渡されなかった場合に返されます。
 	ErrReaderRequired = errors.New("imagekit: Reader is required")
