@@ -63,7 +63,8 @@
 Generate(ctx, ports.ImageRequest) (*ports.ImageResponse, error)
 
 // 複数リクエストを、設定された並列度・レート制限の下で一括生成
-// 一部が失敗しても成功した結果は破棄されない（失敗位置は nil + errors.Join）
+// 一部が失敗しても成功した結果は破棄されない
+// （失敗位置は nil、エラーは requests[i] の添字付きで errors.Join）
 GenerateBatch(ctx, []ports.ImageRequest) ([]*ports.ImageResponse, error)
 ```
 

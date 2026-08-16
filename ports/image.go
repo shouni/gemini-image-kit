@@ -6,13 +6,23 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 )
 
-// ImageURI は画像の参照先情報を保持します。
+// ImageURI は参照画像の所在を表します。
+//
+// 2 つのフィールドは排他ではありません。どちらをどう使うかはバックエンドが決めます
+// （Vertex AI + gs:// は転送が発生しないため FileAPIURI より優先され、それ以外では
+// FileAPIURI が指定されていればアップロードを省いてそのまま参照します）。
 type ImageURI struct {
-	ReferenceURL string // 元の参照先 (GCS, HTTP等)
-	FileAPIURI   string // Gemini File API 上の URI (https://...)
+	// ReferenceURL は元の参照先です（gs:// または http(s)://）。
+	ReferenceURL string
+	// FileAPIURI は、呼び出し側が既に Gemini File API へ上げてある場合の URI です
+	// (https://...)。指定するとキットはアップロードを省きます。
+	FileAPIURI string
 }
 
-// IsEmpty は画像参照先が設定されていないかを返します。
+// IsEmpty は参照先が設定されていないかを返します。
+//
+// 空の要素はエラーではなく、送信対象から黙って外れます。「このキャラクターには
+// 参照画像が無い」を、呼び出し側が要素の欠落として表現できるようにするためです。
 func (uri ImageURI) IsEmpty() bool {
 	return uri.ReferenceURL == "" && uri.FileAPIURI == ""
 }

@@ -24,7 +24,8 @@ type BatchImageGenerator interface {
 	ImageGenerator
 	// GenerateBatch は複数のリクエストを設定された並列度・レート制限の下で実行し、
 	// 入力と同じ順序で結果を返します。一部が失敗しても成功した結果は破棄されず、
-	// 失敗した位置の要素だけが nil になります（エラーは errors.Join で集約されます）。
+	// 失敗した位置の要素だけが nil になります（エラーは requests[i] の添字を付けて
+	// errors.Join で集約されます）。
 	GenerateBatch(ctx context.Context, reqs []ImageRequest) ([]*ImageResponse, error)
 }
 

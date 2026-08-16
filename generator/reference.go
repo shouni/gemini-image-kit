@@ -33,9 +33,7 @@ func (g *GeminiGenerator) collectImageAttachments(ctx context.Context, uris []po
 
 	var wg sync.WaitGroup
 	for i, uri := range uris {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			attachment, err := g.resolveImageAttachment(fetchCtx, uri)
 			if err != nil {
 				errs[i] = err
@@ -43,7 +41,7 @@ func (g *GeminiGenerator) collectImageAttachments(ctx context.Context, uris []po
 				return
 			}
 			resolved[i] = attachment
-		}()
+		})
 	}
 	wg.Wait()
 
