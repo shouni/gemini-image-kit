@@ -9,9 +9,13 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// executeRequest は Gemini API を呼び出し、レスポンスをパースします。
-func (c *GeminiImageCore) executeRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
-	resp, err := c.aiClient.GenerateWithAttachments(ctx, model, prompt, attachments, opts)
+// executeRequest はモデルを呼び出し、レスポンスをパースします。
+//
+// GenerateWithAttachments はプロンプトを添付より前に置きます。この順序は実際の
+// カバーアート用プロンプトで images-then-prompt の形と比較測定してあり、差は
+// 実行ごとのばらつきの範囲だったため、順序の切り替えノブは設けていません。
+func (g *Generator) executeRequest(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
+	resp, err := g.aiClient.GenerateWithAttachments(ctx, model, prompt, attachments, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -19,9 +23,11 @@ func (c *GeminiImageCore) executeRequest(ctx context.Context, model string, prom
 	return parseToResponse(resp, model, prompt, dereferenceSeed(opts.Seed))
 }
 
-// parseToResponse は Gemini からのレスポンスから画像データを抽出します。
-// FinishReason の検証（安全フィルターによるブロック等）は下層の go-gemini-client が行い、
-// ブロック時は生成呼び出し自体がエラーを返すため、ここでは行いません。
+// parseToResponse はレスポンスから画像データを抽出します。
+//
+// FinishReason の検証（安全フィルターによるブロック等）は下層の go-gemini-client が
+// 行い、ブロック時は生成呼び出し自体がエラーを返すため、ここでは行いません。
+// このキットが区別するのは「画像データが無い」ことだけです。
 func parseToResponse(resp *gemini.Response, model, prompt string, seed int64) (*ports.ImageResponse, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("%w: no response", ErrNoImageData)
@@ -46,11 +52,8 @@ func parseToResponse(resp *gemini.Response, model, prompt string, seed int64) (*
 	return nil, fmt.Errorf("%w: response contains no inline image", ErrNoImageData)
 }
 
-// dereferenceSeed は *int64 を安全にデリファレンスします。nil は 0 になります。
-//
-// ImageResponse.UsedSeed は「リクエストで指定したシード」で、API はレスポンスに
-// シードを返しません。自動採番が既定で有効なため通常は実際のシードが入りますが、
-// WithoutAutoSeed を使いつつ未指定で生成すると 0 が記録されます。
+// dereferenceSeed は *int64 を安全にデリファレンスします。
+// nil（WithoutAutoSeed でシードも未指定）は 0 になります。
 func dereferenceSeed(seed *int64) int64 {
 	if seed == nil {
 		return 0

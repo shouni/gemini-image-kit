@@ -8,18 +8,18 @@ import (
 
 	"github.com/shouni/go-gemini-client/gemini"
 
-	"github.com/shouni/gemini-image-kit/internal/imgutil"
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// collectImageAttachments は ImageURI 構造体から添付を生成します。
+// collectImageAttachments は ImageURI の並びを送信用の添付へ変換します。
 //
-// 参照画像の解決は GCS / HTTP の往復を伴うため並行に実行します。融合生成
-// (GenerateFusedImage) では参照が増えるほど直列の待ち時間がそのまま積み上がるためです。
-// 結果は入力順のまま返します（参照画像の並び順はモデルの解釈に影響します）。
+// 参照の解決は resolver 次第で GCS / HTTP の往復を伴うため並行に実行します。融合生成
+// では参照が増えるほど直列の待ち時間がそのまま積み上がるためです。結果は入力順のまま
+// 返します（参照画像の並び順はモデルの解釈に影響します）。
 //
-// 並行実行するため、注入する ports.ImageCacher は同時アクセス安全である必要があります。
-func (g *GeminiGenerator) collectImageAttachments(ctx context.Context, uris []ports.ImageURI) ([]gemini.Attachment, error) {
+// 並行実行するため、注入する ports.ReferenceResolver は同時アクセス安全で
+// ある必要があります。
+func (g *Generator) collectImageAttachments(ctx context.Context, uris []ports.ImageURI) ([]gemini.Attachment, error) {
 	if len(uris) <= 1 {
 		return g.collectSequentially(ctx, uris)
 	}
@@ -61,7 +61,7 @@ func (g *GeminiGenerator) collectImageAttachments(ctx context.Context, uris []po
 
 // collectSequentially は参照が 1 枚以下の場合の経路です。goroutine を起こす意味が
 // ないだけでなく、単一参照の失敗がそのまま素のエラーとして返るようにもなります。
-func (g *GeminiGenerator) collectSequentially(ctx context.Context, uris []ports.ImageURI) ([]gemini.Attachment, error) {
+func (g *Generator) collectSequentially(ctx context.Context, uris []ports.ImageURI) ([]gemini.Attachment, error) {
 	attachments := make([]gemini.Attachment, 0, len(uris))
 	for _, uri := range uris {
 		attachment, err := g.resolveImageAttachment(ctx, uri)
@@ -95,23 +95,18 @@ func firstMeaningfulError(errs []error) error {
 	return nil
 }
 
-// resolveImageAttachment は ImageURI から添付を生成します。
+// resolveImageAttachment は ImageURI 1 件を resolver に解決させます。
 //
-// 「どう解決するか」（直接参照 / File API / インライン）はバックエンドとキャッシュを
-// 持つ ImageExecutor 側の判断なので、ここでは失敗した参照を示す文脈だけを足します。
-func (g *GeminiGenerator) resolveImageAttachment(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
-	attachment, err := g.core.resolveReference(ctx, uri)
+// 参照先を持たない要素は resolver へ渡さず、空の添付として落とします。エラーに
+// しないのは、「このキャラクターには参照画像が無い」を呼び出し側が要素の欠落として
+// 表現できるようにするためです。
+func (g *Generator) resolveImageAttachment(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
+	if uri.IsEmpty() {
+		return gemini.Attachment{}, nil
+	}
+	attachment, err := g.resolver.Resolve(ctx, uri)
 	if err != nil {
 		return gemini.Attachment{}, fmt.Errorf("failed to prepare image attachment for %q: %w", uri.ReferenceURL, err)
 	}
 	return attachment, nil
-}
-
-// fileAttachment は URI 参照の添付を生成します。
-//
-// 拡張子から MIME type を判別できない場合は MIMEType を設定しません。
-// 誤った型を申告するとサーバー側のデコードが失敗しうるため、
-// 推測できないときはサーバーのコンテンツ判定に委ねます。
-func fileAttachment(fileURI, mimeHintURI string) gemini.Attachment {
-	return gemini.Attachment{URI: fileURI, MIMEType: imgutil.GuessMIMEType(mimeHintURI)}
 }

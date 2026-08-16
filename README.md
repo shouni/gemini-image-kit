@@ -12,9 +12,9 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットです。
 
-単なる API ラッパーではなく、「**GCS/外部URLからの参照画像自動取得**」「**Gemini File API とキャッシュの一貫性管理**」「**注入可能な Downloader による取得ポリシー制御**」「**インメモリ画像圧縮**」といった、実用的なアプリケーション開発で直面する課題を解決するために設計されています。
+単なる API ラッパーではなく、生の SDK に無いものを足します。**参照画像をどう送るかを差し替えられる仕組み**（`gs://` を転送せず直接参照 / GCS・外部 URL から取得 / File API へ上げてキャッシュ）、インメモリ画像圧縮、リクエスト単位のレート制限・並列度・タイムアウトです。
 
-`ImageRequest` 1 つで、単一参照画像からの生成も、複数参照画像を統合した 1 枚の画像生成もサポートします（`Images` の枚数が解釈を決めます）。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。既存画像の編集（構図を保った部分修正）が必要な場合は、既存画像を参照に、編集指示をプロンプトとして `Generate` を呼ぶことで、Gemini の会話型マルチモーダル画像モデル（Nano Banana系）による編集が行えます。
+`ImageRequest` 1 つで、参照なしのテキスト生成も、単一参照からの生成も、複数参照を統合した融合生成も表現できます（`Images` の枚数が解釈を決めます）。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。既存画像の編集も、編集対象を参照に、編集指示をプロンプトとして `Generate` を呼ぶだけです。
 
 ---
 
@@ -23,15 +23,15 @@
 * **🖼️ Unified Generator**:
   * `Generate` / `GenerateBatch` により、単一・複数参照画像の生成と一括生成を一貫して管理。
   * レート制限（`WithRateLimit`）・並列度（`WithMaxConcurrency`）・リクエストタイムアウト（`WithRequestTimeout`）を内蔵。利用側で errgroup + rate.Limiter を組む必要はありません。
+* **🔗 Pluggable Reference Resolution**:
+  * 参照画像の送り方を `ports.ReferenceResolver` として**アプリ側が選びます**。`gs://` の直接参照（`GCSResolver`、依存ゼロ）、取得してインライン（`FetchResolver`）、File API へ上げてキャッシュ（`FileAPIResolver`）を `ResolverChain` で組み合わせます（下記「参照画像の解決方法」）。
+  * 依存は選んだ resolver だけが要求します。`gs://` しか使わない構成なら、取得・キャッシュの実装を一切渡す必要がありません。
+  * File API 経路では、同一ソースへの同時アップロードが singleflight で1回にまとまります。同じ参照画像を並行して使っても File API 上に重複ファイルを作りません。
 * **🧩 Image Fusion Workflow**:
-  * 複数の参照画像を Gemini の入力パーツとして収集し、プロンプトと組み合わせて1枚の画像を生成。
-  * 参照画像の取得（GCS / HTTP）は**並行実行**。参照が増えても待ち時間が積み上がりません。結果の並び順は入力順のまま保たれます。
-* **🔗 Hybrid Asset Workflow**:
-  * Vertex AI モード: `gs://` スキームを検知し、GCS 上のデータを転送なしで Gemini に直接参照させることで、爆速な解析とリソース節約を実現。
-  * Gemini API モード: Gemini File API (`files/xxxx`) を優先利用し、キャッシュがない場合は自動的にソースから取得して再アップロードするライフサイクル管理。**この判断はキット側が持つため、呼び出し側でアップロードを組む必要はありません**（下記「参照画像の解決方法」）。
-  * 同一ソースへの同時アップロードは singleflight で1回にまとまります。同じ参照画像を並行して使っても File API 上に重複ファイルを作りません。
+  * 複数の参照画像を収集し、プロンプトと組み合わせて1枚の画像を生成。
+  * 参照の解決は**並行実行**。GCS / HTTP の往復を伴う経路でも、参照が増えて待ち時間が積み上がりません。結果の並び順は入力順のまま保たれます。
 * **☁️ Intelligent MIME Prediction**:
-  * GCS や外部 URI を参照するときは拡張子から `MIMEType` を推測し、インライン送信するときは実データの内容から判定します。
+  * URI 参照では拡張子から `MIMEType` を推測し、インライン送信では実データの内容から判定します。
   * **推測できない拡張子では `MIMEType` を付けません**（サーバー側のコンテンツ判定に委ねます）。既定値を当てると PNG を JPEG と申告するような誤った型宣言になりうるためです。
 * **🛡️ Fetch Policy Injection**:
   * 外部 URL 取得は `ports.Downloader` 経由に限定。SSRF 対策や許可ドメイン制御は、アプリケーション側で安全な Downloader を注入して適用します。
@@ -39,9 +39,9 @@
   * **Stream-Based Upload**: File API へのアップロードは `bufio.Reader` を活用し、圧縮不要な場合はストリームで直接転送します（圧縮が必要な場合はメモリ上で再エンコードしてからアップロードします）。
   * **Selective Optimization**: PNG/GIF など圧縮対象の画像は JPEG に変換し、変換後の MIMEType も実データに合わせて送信します。
 * **🧬 Robust Design**:
-  * プロンプトとネガティブプロンプトの安全な結合、シード値の管理、アスペクト比の制御などを内蔵。
-  * **シード自動採番が既定で有効**: シード未指定の生成でも `ImageResponse.UsedSeed` が実際に使われたシードを指すため、記録しておけば同じ結果を再現できます（`WithoutAutoSeed()` で無効化可）。
-  * `ImageResponse` は `Model` / `Prompt` / `Usage`（トークン使用量）も返すため、コストや生成条件の記録に別途リクエストを持ち回る必要がありません。
+  * プロンプトとネガティブプロンプトの安全な結合、アスペクト比の制御などを内蔵。
+  * **シード自動採番が既定で有効**（下記「シードと再現性」）。
+  * `ImageResponse` は画像バイト列に加えて `Model` / `Prompt` / `Usage` も返すため、コストや生成条件の記録にリクエストを持ち回る必要がありません。
 
 ---
 
@@ -49,8 +49,8 @@
 
 | パッケージ | 役割 |
 | --- | --- |
-| `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装。`GeminiGenerator`（高レベル API）と `GeminiImageCore`（生成実行・参照画像の解決・File API のライフサイクル管理）。 |
-| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。 |
+| `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装（`Generator`）と、参照画像の解決を担う resolver 群（`GCSResolver` / `FetchResolver` / `FileAPIResolver` / `ResolverChain`）。 |
+| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ReferenceResolver` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。 |
 
 `generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
 
@@ -71,13 +71,15 @@ GenerateBatch(ctx, []ports.ImageRequest) ([]*ports.ImageResponse, error)
 生成時の任意設定は `generator.Option` で渡します。
 
 ```go
-g, err := generator.NewGeminiGenerator(core,
+g, err := generator.New(client, resolver,
     generator.WithRateLimit(30*time.Second, 1), // 発射間隔とバースト
     generator.WithMaxConcurrency(2),            // GenerateBatch の並列度
     generator.WithRequestTimeout(5*time.Minute))
 ```
 
-利用側が依存するポートは `ports.ImageGenerator`（1 メソッド）です。参照解決やアップロードの内部分割はパッケージ内に閉じており、公開インターフェースではありません。
+第 2 引数の `resolver` は**必須**です。参照画像をどう送るか（`gs://` を直接参照 / File API へ上げて使い回す / 取得してインライン）は運用上の判断なので、キットが既定で黙って選ぶことはしません。詳細は「参照画像の解決方法」を参照してください。
+
+利用側が依存するポートは `ports.ImageGenerator`（1 メソッド）です。
 
 このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
 
@@ -126,10 +128,11 @@ func main() {
        log.Fatal(err)
     }
 
-    core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
-       AIClient:   ai,
+    // Gemini API バックエンド: File API へ上げて使い回し、失敗したら取得してインライン
+    upload, err := generator.NewFileAPIResolver(generator.FileAPIResolverConfig{
+       Files:      ai,
        Reader:     noStorageReader{},
-       HTTPClient: httpDownloader{client: http.DefaultClient},
+       Downloader: httpDownloader{client: http.DefaultClient},
        Cache:      newMemoryCache(),
        CacheTTL:   24 * time.Hour,
        Compress:   true, // PNG/GIF を JPEG に変換して送信サイズを抑える
@@ -137,8 +140,16 @@ func main() {
     if err != nil {
        log.Fatal(err)
     }
+    inline, err := generator.NewFetchResolver(generator.FetchResolverConfig{
+       Reader:     noStorageReader{},
+       Downloader: httpDownloader{client: http.DefaultClient},
+       Compress:   true,
+    })
+    if err != nil {
+       log.Fatal(err)
+    }
 
-    g, err := generator.NewGeminiGenerator(core)
+    g, err := generator.New(ai, generator.NewResolverChain(upload, inline))
     if err != nil {
        log.Fatal(err)
     }
@@ -172,7 +183,7 @@ func main() {
 <details>
 <summary>上の例で使っている補助実装（最小のプレースホルダ）</summary>
 
-`Reader` / `HTTPClient` / `Cache` は注入する前提なので、動かすための最小実装を載せます。実運用では SSRF 対策済みの HTTP クライアント、GCS 読み取り、TTL 付きキャッシュ（`ttlcache` など）に置き換えてください。`Cache` は参照解決が並行に走るため、**同時アクセス安全な実装**である必要があります。
+`Reader` / `Downloader` / `Cache` は注入する前提なので、動かすための最小実装を載せます。実運用では SSRF 対策済みの HTTP クライアント、GCS 読み取り、TTL 付きキャッシュ（`ttlcache` など）に置き換えてください。`Cache` は参照解決が並行に走るため、**同時アクセス安全な実装**である必要があります。
 
 ```go
 type httpDownloader struct {
@@ -248,7 +259,7 @@ resp, err := g.Generate(ctx, ports.ImageRequest{
 
 ### 3. Vertex AI で GCS 画像を直接参照する
 
-Vertex AI モードでは、`gs://` の参照画像はダウンロードせずに Gemini へ直接渡します。
+`GCSResolver` を経路に置くと、`gs://` の参照画像はダウンロードされずそのまま Vertex AI へ渡ります。
 
 ```go
 ai, err := gemini.NewClient(ctx, gemini.Config{
@@ -259,19 +270,17 @@ if err != nil {
     log.Fatal(err)
 }
 
-core, err := generator.NewGeminiImageCore(generator.GeminiImageCoreConfig{
-	AIClient:   ai,
+// Vertex AI バックエンド: gs:// は転送せず直接参照。それ以外は取得してインライン。
+// 参照が gs:// だけで済むなら NewGCSResolver() 単体で足り、取得系の依存は不要です。
+inline, err := generator.NewFetchResolver(generator.FetchResolverConfig{
 	Reader:     noStorageReader{},
-	HTTPClient: httpDownloader{client: http.DefaultClient},
-	Cache:      newMemoryCache(),
-	CacheTTL:   24*time.Hour,
-	Compress:   false,
+	Downloader: httpDownloader{client: http.DefaultClient},
 })
 if err != nil {
     log.Fatal(err)
 }
 
-g, err := generator.NewGeminiGenerator(core)
+g, err := generator.New(ai, generator.NewResolverChain(generator.NewGCSResolver(), inline))
 if err != nil {
     log.Fatal(err)
 }
@@ -320,47 +329,76 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 
 ---
 
-## ⚙️ 設定 (`generator.GeminiImageCoreConfig`)
+## ⚙️ 設定
+
+### `generator.New(client, resolver, opts...)`
+
+| 引数 | 役割 |
+| --- | --- |
+| `client` | `gemini.Generator`（`GenerateWithAttachments` の 1 メソッド）。**必須**。`gemini.BackendInspector` も満たす実クライアントを渡すと、安全設定と人物生成の既定値がバックエンドに応じて切り替わります |
+| `resolver` | `ports.ReferenceResolver`。**必須**（既定値なし） |
+| `opts` | `WithRateLimit` / `WithMaxConcurrency` / `WithRequestTimeout` / `WithoutAutoSeed` |
+
+### `generator.FetchResolverConfig`（取得してインライン送信）
 
 | 設定項目 | 役割 | 既定値 |
 | --- | --- | --- |
-| `AIClient` | `gemini.Model`（生成・File API・バックエンド判定）。**必須** | - |
 | `Reader` | `gs://` を読む `ports.ContentReader`。**必須** | - |
-| `HTTPClient` | http(s) を読む `ports.Downloader`。**必須** | - |
-| `Cache` | アップロード済みファイルの参照を保持する `ports.ImageCacher`（`Get`/`Set`）。**必須**（アップロードの使い回しがこのキットの主要なコスト最適化のため） | - |
-| `CacheTTL` | 上記キャッシュの有効期間。**0 は補完せずそのまま渡します**（`ttlcache` では 0 が `DefaultTTL` そのもので、「キャッシュ側の既定に従う」という意味を持つため）。File API の保持期限より短く設定してください | 実装依存 |
+| `Downloader` | http(s) を読む `ports.Downloader`。**必須**。呼び出し側が入力した URL がそのまま渡るため、**SSRF 対策とドメイン許可リストは呼び出し側の責務**です | - |
+| `FetchTimeout` | 取得1回あたりの制限時間 | `1m`（`DefaultFetchTimeout`） |
+| `MaxReferenceBytes` | 参照画像1枚あたりのサイズ上限。超えるとエラー | `32MiB`（`DefaultMaxReferenceBytes`） |
 | `Compress` | PNG/GIF を送信前に JPEG へ再圧縮するか | `false` |
 | `CompressionQuality` | `Compress` が true のときの JPEG 品質 | `75`（`DefaultCompressionQuality`） |
-| `UploadTimeout` | アップロード1回あたりの制限時間。共有実行は呼び出し元の context から切り離されるため、これが唯一の打ち切り手段です | `2m`（`DefaultUploadTimeout`） |
-| `InlineReferences` | 参照画像を File API へ上げず常にインライン送信するか（使い捨ての参照向け） | `false` |
-| `FetchTimeout` | 参照画像の取得（インライン送信経路）1回あたりの制限時間 | `1m`（`DefaultFetchTimeout`） |
-| `MaxReferenceBytes` | 参照画像1枚あたりのサイズ上限。超えるとエラー | `32MiB`（`DefaultMaxReferenceBytes`） |
-| `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
 
-必須依存が欠けている場合は `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired` を返します。
+### `generator.FileAPIResolverConfig`（File API へアップロードして URI 参照）
+
+Gemini API バックエンド専用です（Vertex AI に File API はありません）。
+
+| 設定項目 | 役割 | 既定値 |
+| --- | --- | --- |
+| `Files` | `gemini.FileManager`（アップロード先）。**必須** | - |
+| `Reader` / `Downloader` | アップロード元の取得に使います。**必須** | - |
+| `Cache` | アップロード済み URI を保持する `ports.ImageCacher`（`Get`/`Set`）。**必須**（使い回しがこの resolver の存在理由のため） | - |
+| `CacheTTL` | 上記キャッシュの有効期間。**0 は補完せずそのまま渡します**（`ttlcache` では 0 が `DefaultTTL` そのもので、「キャッシュ側の既定に従う」という意味を持つため）。File API の保持期限より短く設定してください | 実装依存 |
+| `UploadTimeout` | アップロード1回あたりの制限時間。共有実行は呼び出し元の context から切り離されるため、これが唯一の打ち切り手段です | `2m`（`DefaultUploadTimeout`） |
+| `FetchTimeout` / `MaxReferenceBytes` | 取得側の上限（`FetchResolverConfig` と同じ） | 同上 |
+| `Compress` / `CompressionQuality` | アップロード前の再圧縮 | `false` / `75` |
+| `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
 
 ---
 
 ## 🎯 参照画像の解決方法
 
-`ImageURI` 1件をどう送るかは、バックエンドと URI の種類でキットが決めます。
+`ImageURI` 1 件をどう送るかは、注入した `ports.ReferenceResolver` が決めます。キットは 3 つの実装と、それらを並べる `ResolverChain` を提供します。
 
-| 条件 | 解決方法 |
-| --- | --- |
-| Vertex AI + `gs://` | 転送せず直接参照（最も安い。`FileAPIURI` の指定より優先） |
-| `FileAPIURI` が指定済み | その URI をそのまま参照 |
-| Gemini API | **File API へアップロードして URI 参照**（キャッシュ + singleflight） |
-| Vertex AI + `gs://` 以外 | インライン送信（Vertex AI に File API は無いため） |
+| resolver | 解決方法 | 依存 | 制約 |
+| --- | --- | --- | --- |
+| `NewGCSResolver()` | `gs://` を転送せず直接参照（最も安い） | **なし** | Vertex AI 専用 |
+| `NewFetchResolver(cfg)` | 取得してバイト列をインライン送信 | Reader / Downloader | なし |
+| `NewFileAPIResolver(cfg)` | File API へアップロードして URI 参照（キャッシュ + singleflight）。`ImageURI.FileAPIURI` が設定済みならアップロードを省いてそれを使う | Files / Reader / Downloader / Cache | Gemini API 専用 |
 
-Gemini API バックエンドで同じ参照画像を繰り返し使う場合、毎回バイト列を送るより安く済みます。逆に参照画像が毎回異なる使い捨てのワークロードでは、アップロードの往復と File API 上のファイルが無駄になるため、`GeminiImageCoreConfig.InlineReferences: true` で常にインライン送信へ固定できます。
+`ResolverChain` は先頭から順に試し、`ports.ErrResolverNotApplicable`（管轄外）を返した resolver だけ読み飛ばします。取得失敗のような実エラーはその場で返します — 次へ流すと、ネットワーク障害が「参照を解決できません」にすり替わって原因が消えるためです。誰も扱えなければ `ErrUnresolvedReference` になります（経路の設定漏れ）。
 
-アップロードに失敗した場合は警告ログを出してインライン送信にフォールバックします（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。ただし失敗の原因が呼び出し側のキャンセルである場合はフォールバックせず、キャンセルをそのまま返します。
+```go
+// Vertex AI: gs:// は直接参照、それ以外は取得してインライン
+generator.NewResolverChain(generator.NewGCSResolver(), fetchResolver)
+
+// Gemini API: File API へ上げて使い回し、失敗したら取得してインライン
+generator.NewResolverChain(fileAPIResolver, fetchResolver)
+
+// 参照が gs:// だけの構成（取得もキャッシュも不要）
+generator.NewGCSResolver()
+```
+
+`FileAPIResolver` はアップロードに失敗すると警告ログを出して**辞退**し、次の resolver に委ねます（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。ただし失敗の原因が呼び出し側のキャンセルである場合は辞退せず、キャンセルをそのまま返します。
+
+Vertex AI 専用の resolver に Gemini API のクライアントを組み合わせると、`generator.New` が構築時に `ErrVertexAIRequired` を返します（生成時に不可解な失敗をするより、構築時に落とします）。
 
 File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
 
-### 参照画像の取得は並行
+### 参照画像の解決は並行
 
-`Generate` に複数の参照画像を渡した場合、GCS / HTTP からの取得は並行に走ります。そのため注入する `ports.ImageCacher` は**同時アクセス安全**である必要があります（`ttlcache` などロック付きの実装、または自前でロック）。取得が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
+`Generate` に複数の参照画像を渡した場合、解決は並行に走ります。そのため注入する `ports.ReferenceResolver` は**同時アクセス安全**である必要があります（`FileAPIResolver` を使う場合は、それが持つ `ports.ImageCacher` も同様。`ttlcache` などロック付きの実装、または自前でロック）。解決が失敗した場合は、入力順で最初に失敗した参照のエラーが返ります（実行ごとにエラーが変わらないようにするため）。
 
 ---
 
@@ -381,11 +419,14 @@ File API 上のファイルには保持期限があるため、`CacheTTL` はそ
 - `ErrUnsupportedFileFormat`: 取得したデータが画像として扱えない場合。
 - `ErrReferenceTooLarge`: 参照画像が `MaxReferenceBytes` を超えている場合。
 - `ErrNoImageData`: レスポンスに画像データが含まれていない場合。
+- `ErrUnresolvedReference`: どの resolver も参照を扱えなかった場合（解決経路の設定漏れ）。
 
 コンストラクタの必須依存に対するセンチネルは次のとおりです。
 
-- `ErrAIClientRequired` / `ErrReaderRequired` / `ErrHTTPClientRequired` / `ErrCacheRequired`: `NewGeminiImageCore` に対応する依存が渡されなかった場合。
-- `ErrExecutorRequired`: `NewGeminiGenerator` に core が渡されなかった場合。
+- `ErrAIClientRequired` / `ErrResolverRequired`: `New` にクライアント / resolver が渡されなかった場合。
+- `ErrVertexAIRequired`: Vertex AI 専用の resolver に Gemini API のクライアントを組み合わせた場合。
+- `ErrReaderRequired` / `ErrHTTPClientRequired`: `NewFetchResolver` / `NewFileAPIResolver` に取得系の依存が渡されなかった場合。
+- `ErrFileManagerRequired` / `ErrCacheRequired`: `NewFileAPIResolver` に `Files` / `Cache` が渡されなかった場合。
 
 ---
 

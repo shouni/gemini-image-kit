@@ -8,14 +8,13 @@ import (
 
 // ImageURI は参照画像の所在を表します。
 //
-// 2 つのフィールドは排他ではありません。どちらをどう使うかはバックエンドが決めます
-// （Vertex AI + gs:// は転送が発生しないため FileAPIURI より優先され、それ以外では
-// FileAPIURI が指定されていればアップロードを省いてそのまま参照します）。
+// どちらのフィールドをどう使うかは、注入した ReferenceResolver が決めます。
 type ImageURI struct {
 	// ReferenceURL は元の参照先です（gs:// または http(s)://）。
 	ReferenceURL string
 	// FileAPIURI は、呼び出し側が既に Gemini File API へ上げてある場合の URI です
-	// (https://...)。指定するとキットはアップロードを省きます。
+	// (https://...)。generator.FileAPIResolver を経路に置いている場合のみ使われ、
+	// 指定するとアップロードが省かれます。それ以外の経路では無視されます。
 	FileAPIURI string
 }
 
@@ -31,9 +30,8 @@ func (uri ImageURI) IsEmpty() bool {
 //
 // gemini.GenerateOptions を埋め込んでいるため、SystemPrompt / AspectRatio /
 // ImageSize / Seed / Temperature などの生成パラメータはフィールド昇格でそのまま
-// 設定できます。以前はここに 10 個のフィールドを写し取っていましたが、
-// go-gemini-client 側にフィールドが増えるたびに 2 ファイルの同期が必要になるため、
-// 埋め込みに変更しました。
+// 設定できます。フィールドを写し取ると go-gemini-client 側の追加のたびに 2 ファイルの
+// 同期が必要になるため、埋め込みにしています。
 //
 // SafetySettings と PersonGeneration は、未指定の場合のみバックエンドに応じた
 // 既定値（安全フィルタ無効・人物生成許可）が補われます。呼び出し側が明示した
@@ -49,10 +47,11 @@ type GenerationOptions struct {
 // ImageRequest は画像生成 1 回分の要求です。
 //
 // Images が 1 枚なら参照付きの単発生成、複数なら参照画像を統合した融合生成、
-// 空ならテキストのみの生成になります。以前は単発と融合で型とメソッドが分かれて
-// いましたが、実装は完全に同一経路だったため 1 つに統合しました。
+// 空ならテキストのみの生成になります。枚数が解釈を決めるため、単発と融合で
+// 型を分けません。
 type ImageRequest struct {
 	GenerationOptions
+	// Images は参照画像です。並び順はモデルの解釈に影響するため保持されます。
 	Images []ImageURI
 }
 

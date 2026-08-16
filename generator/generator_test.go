@@ -4,102 +4,138 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
 
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-func TestGeminiGenerator_GenerateWithSingleReference(t *testing.T) {
-	ctx := context.Background()
-	ai := &mockAIClient{}
-	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
-		AIClient: ai, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
-		Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
-	})
+// newVertexGenerator は、Vertex AI の典型構成（gs:// 直参照 + 取得フォールバック）で
+// Generator を組み立てます。
+func newVertexGenerator(t *testing.T, client *fakeClient) *Generator {
+	t.Helper()
+	client.vertexAI = true
+	g, err := New(client, NewResolverChain(NewGCSResolver(), newTestFetchResolver(t, FetchResolverConfig{})))
 	if err != nil {
-		t.Fatalf("failed to create core: %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
-	g, err := NewGeminiGenerator(core)
-	if err != nil {
-		t.Fatalf("failed to create generator: %v", err)
+	return g
+}
+
+// TestNewRequiresClientAndResolver は、必須引数の nil チェックを検証します。
+//
+// resolver に既定を用意しないのは、参照の送り方（gs:// 直参照 / File API /
+// インライン）が運用上の判断であり、黙って選ぶと利用側が気付けないためです。
+func TestNewRequiresClientAndResolver(t *testing.T) {
+	if _, err := New(nil, NewGCSResolver()); !errors.Is(err, ErrAIClientRequired) {
+		t.Errorf("error = %v, want ErrAIClientRequired", err)
+	}
+	if _, err := New(&fakeClient{}, nil); !errors.Is(err, ErrResolverRequired) {
+		t.Errorf("error = %v, want ErrResolverRequired", err)
+	}
+}
+
+// TestNewRejectsVertexResolverOnGeminiAPI は、Vertex 専用の resolver に Gemini API の
+// クライアントを組み合わせた取り違えを構築時に弾くことを確認します。生成時まで
+// 気付けないと、参照が一切解決できない不可解な失敗になります。
+func TestNewRejectsVertexResolverOnGeminiAPI(t *testing.T) {
+	_, err := New(&fakeClient{vertexAI: false}, NewGCSResolver())
+	if !errors.Is(err, ErrVertexAIRequired) {
+		t.Fatalf("error = %v, want ErrVertexAIRequired", err)
 	}
 
-	resp, err := g.Generate(ctx, ports.ImageRequest{
+	// チェーンに含まれていても同じく弾く。
+	chain := NewResolverChain(NewGCSResolver(), newTestFetchResolver(t, FetchResolverConfig{}))
+	if _, err := New(&fakeClient{vertexAI: false}, chain); !errors.Is(err, ErrVertexAIRequired) {
+		t.Errorf("chain error = %v, want ErrVertexAIRequired", err)
+	}
+}
+
+// TestGenerateWithSingleReference は、参照 1 枚の生成が通ることを確認します。
+func TestGenerateWithSingleReference(t *testing.T) {
+	client := &fakeClient{}
+	g := newVertexGenerator(t, client)
+
+	resp, err := g.Generate(context.Background(), ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{
 			Model:           "gemini-test-model",
 			Prompt:          "test prompt",
 			GenerateOptions: gemini.GenerateOptions{ImageSize: "2K"},
 		},
-		Images: []ports.ImageURI{{
-			FileAPIURI:   "https://generativelanguage.googleapis.com/v1beta/files/test",
-			ReferenceURL: "gs://bucket/ref.png",
-		}},
+		Images: []ports.ImageURI{{ReferenceURL: "gs://bucket/ref.png"}},
 	})
-
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("Generate() error = %v", err)
 	}
-	if !ai.generateCalled {
-		t.Fatal("expected GenerateWithParts to be called")
+	if !client.generateCalled {
+		t.Fatal("モデルが呼ばれていません")
 	}
 	if resp == nil || resp.MimeType != "image/png" {
 		t.Errorf("unexpected response: %+v", resp)
 	}
+	if got := client.attachments(); len(got) != 1 || got[0].URI != "gs://bucket/ref.png" {
+		t.Errorf("attachments = %+v, want the gs:// reference", got)
+	}
 }
 
-func TestGeminiGenerator_GenerateWithMultipleReferences(t *testing.T) {
-	ctx := context.Background()
-	ai := &mockAIClient{}
-	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
-		AIClient: ai, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
-		Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create core: %v", err)
-	}
-	g, err := NewGeminiGenerator(core)
-	if err != nil {
-		t.Fatalf("failed to create generator: %v", err)
-	}
+// TestGenerateWithMultipleReferences は、複数参照（融合生成）が通ることを確認します。
+func TestGenerateWithMultipleReferences(t *testing.T) {
+	client := &fakeClient{}
+	g := newVertexGenerator(t, client)
 
-	resp, err := g.Generate(ctx, ports.ImageRequest{
+	resp, err := g.Generate(context.Background(), ports.ImageRequest{
 		GenerationOptions: ports.GenerationOptions{
 			Model:           "gemini-test-model",
 			Prompt:          "fuse these",
 			GenerateOptions: gemini.GenerateOptions{AspectRatio: "16:9"},
 		},
 		Images: []ports.ImageURI{
-			{FileAPIURI: "https://generativelanguage.googleapis.com/v1beta/files/one", ReferenceURL: "ref-1"},
-			{FileAPIURI: "https://generativelanguage.googleapis.com/v1beta/files/two", ReferenceURL: "ref-2"},
+			{ReferenceURL: "gs://bucket/one.png"},
+			{ReferenceURL: "gs://bucket/two.png"},
 		},
 	})
-
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !ai.generateCalled {
-		t.Fatal("expected GenerateWithParts to be called")
+		t.Fatalf("Generate() error = %v", err)
 	}
 	if resp == nil || resp.MimeType != "image/png" {
 		t.Errorf("unexpected response: %+v", resp)
 	}
+	if got := client.attachments(); len(got) != 2 {
+		t.Errorf("attachments = %d, want 2", len(got))
+	}
+}
+
+// TestGenerateReturnsReferenceError は、参照解決の失敗でモデルを呼ばないことを
+// 確認します（呼べば課金だけ発生します）。
+func TestGenerateReturnsReferenceError(t *testing.T) {
+	client := &fakeClient{vertexAI: true}
+	fetch := newTestFetchResolver(t, FetchResolverConfig{
+		Downloader: &mockHTTPClient{err: errors.New("download failed")},
+	})
+	g, err := New(client, NewResolverChain(NewGCSResolver(), fetch))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = g.Generate(context.Background(), ports.ImageRequest{
+		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "test prompt"},
+		Images:            []ports.ImageURI{{ReferenceURL: "https://example.com/source.png"}},
+	})
+	if err == nil {
+		t.Fatal("expected the reference failure")
+	}
+	if client.generateCalled {
+		t.Fatal("参照解決に失敗したのにモデルが呼ばれています")
+	}
 }
 
 func TestToOptions_PersonGeneration(t *testing.T) {
-	newGenerator := func(t *testing.T, vertexAI bool) *GeminiGenerator {
+	newGenerator := func(t *testing.T, vertexAI bool) *Generator {
 		t.Helper()
-		core, err := NewGeminiImageCore(GeminiImageCoreConfig{
-			AIClient: &mockAIClient{vertexAI: vertexAI}, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{},
-			Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
-		})
+		client := &fakeClient{vertexAI: vertexAI}
+		g, err := New(client, newTestFetchResolver(t, FetchResolverConfig{}))
 		if err != nil {
-			t.Fatalf("failed to create core: %v", err)
-		}
-		g, err := NewGeminiGenerator(core)
-		if err != nil {
-			t.Fatalf("failed to create generator: %v", err)
+			t.Fatalf("New() error = %v", err)
 		}
 		return g
 	}
@@ -131,35 +167,4 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 			t.Errorf("PersonGeneration = %q, want unspecified", opts.PersonGeneration)
 		}
 	})
-}
-
-func TestGeminiGenerator_Generate_ReturnsImagePreparationError(t *testing.T) {
-	ctx := context.Background()
-	ai := &mockAIClient{}
-	core, err := NewGeminiImageCore(GeminiImageCoreConfig{
-		AIClient: ai, Reader: &mockReader{}, HTTPClient: &mockHTTPClient{err: errors.New("download failed")},
-		Cache: &mockCache{}, CacheTTL: time.Hour, Compress: false,
-	})
-	if err != nil {
-		t.Fatalf("failed to create core: %v", err)
-	}
-	g, err := NewGeminiGenerator(core)
-	if err != nil {
-		t.Fatalf("failed to create generator: %v", err)
-	}
-
-	_, err = g.Generate(ctx, ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{
-			Model:  "gemini-test-model",
-			Prompt: "test prompt",
-		},
-		Images: []ports.ImageURI{{ReferenceURL: "https://example.com/source.png"}},
-	})
-
-	if err == nil {
-		t.Fatal("expected image preparation error")
-	}
-	if ai.generateCalled {
-		t.Fatal("GenerateWithParts should not be called when image preparation fails")
-	}
 }

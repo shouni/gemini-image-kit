@@ -18,7 +18,7 @@ type ImageGenerator interface {
 
 // BatchImageGenerator は、複数リクエストの一括生成を行う窓口です。
 //
-// 実装（generator.GeminiGenerator）はレート制限・並列度・リクエストタイムアウトを
+// 実装（generator.Generator）はレート制限・並列度・リクエストタイムアウトを
 // 内蔵しているため、利用側で errgroup + rate.Limiter を組む必要はありません。
 type BatchImageGenerator interface {
 	ImageGenerator

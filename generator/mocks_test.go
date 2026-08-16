@@ -3,68 +3,141 @@ package generator
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/stretchr/testify/require"
 
 	"github.com/shouni/gemini-image-kit/ports"
 )
-
-// --- AI Client Mock ---
 
 const (
 	MockFileUploadURI  = "https://generativelanguage.googleapis.com/v1beta/files/mock-id"
 	MockFileUploadName = "files/mock-id"
 )
 
-type mockAIClient struct {
-	uploadCalled       bool
-	deleteCalled       bool
-	generateCalled     bool
-	lastPrompt         string
-	lastAttachments    []gemini.Attachment
-	lastFileName       string
-	lastUploadMIMEType string
-	lastUploadData     []byte
-	vertexAI           bool
+// --- 生成クライアント ---
+
+// fakeClient は gemini.Generator（+ BackendInspector）のテストダブルです。
+// 送信されたプロンプト・添付・オプションを記録します。GenerateBatch は並行に
+// 呼び出すため、記録フィールドは mu で保護します（-race 対策）。
+type fakeClient struct {
+	vertexAI bool
+	// generate を設定すると生成の挙動を差し替えられます（遅延・失敗の注入用）。
+	generate func(ctx context.Context, model, prompt string) (*gemini.Response, error)
+
+	mu              sync.Mutex
+	generateCalled  bool
+	lastPrompt      string
+	lastAttachments []gemini.Attachment
+	lastOptions     gemini.GenerateOptions
 }
 
-// IsVertexAI を実装
-func (m *mockAIClient) IsVertexAI() bool {
-	return m.vertexAI
-}
+func (c *fakeClient) IsVertexAI() bool { return c.vertexAI }
 
-func (m *mockAIClient) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (gemini.UploadedFile, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return gemini.UploadedFile{}, err
+func (c *fakeClient) GenerateWithAttachments(ctx context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
+	c.mu.Lock()
+	c.generateCalled = true
+	c.lastPrompt = prompt
+	c.lastAttachments = attachments
+	c.lastOptions = opts
+	c.mu.Unlock()
+
+	if c.generate != nil {
+		return c.generate(ctx, model, prompt)
 	}
-
-	m.uploadCalled = true
-	m.lastUploadMIMEType = mimeType
-	m.lastUploadData = data
-	return gemini.UploadedFile{URI: MockFileUploadURI, Name: MockFileUploadName}, nil
-}
-
-func (m *mockAIClient) DeleteFile(_ context.Context, name string) error {
-	m.deleteCalled = true
-	m.lastFileName = name
-	return nil
-}
-
-func (m *mockAIClient) GenerateWithAttachments(_ context.Context, _ string, prompt string, attachments []gemini.Attachment, _ gemini.GenerateOptions) (*gemini.Response, error) {
-	m.generateCalled = true
-	m.lastPrompt = prompt
-	m.lastAttachments = attachments
 	return &gemini.Response{
 		Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("fake-image-bytes")}},
 	}, nil
 }
 
-// --- Storage Reader Mock ---
+func (c *fakeClient) attachments() []gemini.Attachment {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastAttachments
+}
+
+func (c *fakeClient) options() gemini.GenerateOptions {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastOptions
+}
+
+// --- File API ---
+
+// fakeUploader は gemini.FileManager のテストダブルです。
+type fakeUploader struct {
+	mu                 sync.Mutex
+	uploadCalled       bool
+	lastUploadMIMEType string
+	lastUploadData     []byte
+}
+
+func (m *fakeUploader) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (gemini.UploadedFile, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return gemini.UploadedFile{}, err
+	}
+
+	m.mu.Lock()
+	m.uploadCalled = true
+	m.lastUploadMIMEType = mimeType
+	m.lastUploadData = data
+	m.mu.Unlock()
+	return gemini.UploadedFile{URI: MockFileUploadURI, Name: MockFileUploadName}, nil
+}
+
+func (m *fakeUploader) DeleteFile(_ context.Context, _ string) error { return nil }
+
+func (m *fakeUploader) called() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.uploadCalled
+}
+
+func (m *fakeUploader) mimeType() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastUploadMIMEType
+}
+
+// countingUploader は、アップロード回数を数えるための FileManager です。
+// 重複アップロードの検証には呼び出し回数そのものが必要なので、bool フラグを持つ
+// fakeUploader とは別に用意しています。
+type countingUploader struct {
+	fakeUploader
+	uploads     atomic.Int64
+	uploadDelay time.Duration
+	uploadErr   error
+}
+
+func (m *countingUploader) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (gemini.UploadedFile, error) {
+	if _, err := io.ReadAll(r); err != nil {
+		return gemini.UploadedFile{}, err
+	}
+	if m.uploadDelay > 0 {
+		time.Sleep(m.uploadDelay)
+	}
+	if m.uploadErr != nil {
+		return gemini.UploadedFile{}, m.uploadErr
+	}
+	m.uploads.Add(1)
+
+	m.mu.Lock()
+	m.uploadCalled = true
+	m.lastUploadMIMEType = mimeType
+	m.mu.Unlock()
+	return gemini.UploadedFile{URI: MockFileUploadURI, Name: MockFileUploadName}, nil
+}
+
+// --- 取得系 ---
 
 type mockReader struct {
 	data []byte
@@ -82,23 +155,19 @@ func (m *mockReader) Open(_ context.Context, _ string) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(d)), nil
 }
 
-// --- HTTP Client Mock ---
-
 type mockHTTPClient struct {
 	data []byte
 	err  error
 }
 
-// GetStream の実装
 func (m *mockHTTPClient) GetStream(_ context.Context, _ string) (io.ReadCloser, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	// ストリームを返すため、io.NopCloser でラップする
 	return io.NopCloser(bytes.NewReader(m.data)), nil
 }
 
-// --- Cache Mock ---
+// --- キャッシュ ---
 
 // mockCache は ports.ImageCacher のテストダブルです。参照画像の解決は並行に走るため、
 // 本物の実装と同じく同時アクセス安全である必要があります（素の map のままだと
@@ -133,84 +202,46 @@ func (m *mockCache) Set(key string, value any, _ time.Duration) {
 	m.data[key] = value
 }
 
-// --- ImageExecutor Mock ---
+// --- Resolver ---
 
-// stubExecutor は imageExecutor のテストダブルです。参照画像の解決だけを
+// stubResolver は ports.ReferenceResolver のテストダブルです。参照解決だけを
 // 差し替えられるので、並行実行や順序の検証をネットワーク無しで行えます。
-// GenerateBatch は並行に呼び出すため、記録フィールドは mu で保護します（-race 対策）。
-type stubExecutor struct {
-	vertexAI bool
-
-	// resolve は参照画像の解決を差し替えます。nil なら URL をそのままデータに
+type stubResolver struct {
+	// resolve は参照の解決を差し替えます。nil なら URL をそのままデータに
 	// 載せた添付を返します。
 	resolve func(ctx context.Context, rawURL string) (gemini.Attachment, error)
-
-	mu              sync.Mutex
-	lastPrompt      string
-	lastAttachments []gemini.Attachment
-	lastOptions     gemini.GenerateOptions
 }
 
-func (s *stubExecutor) IsVertexAI() bool { return s.vertexAI }
-
-func (s *stubExecutor) executeRequest(_ context.Context, model string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*ports.ImageResponse, error) {
-	s.mu.Lock()
-	s.lastPrompt = prompt
-	s.lastAttachments = attachments
-	s.lastOptions = opts
-	s.mu.Unlock()
-	return &ports.ImageResponse{
-		Data:     []byte("stub-image"),
-		MimeType: "image/png",
-		UsedSeed: dereferenceSeed(opts.Seed),
-		Model:    model,
-		Prompt:   prompt,
-	}, nil
-}
-
-// newStubGenerator は、実行層をスタブに差し替えた GeminiGenerator を組み立てます。
-// 公開コンストラクタは *GeminiImageCore を要求するため、テストはここを通します。
-func newStubGenerator(stub *stubExecutor, opts ...Option) *GeminiGenerator {
-	g := &GeminiGenerator{core: stub, autoSeed: true, maxConcurrency: 1}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(g)
-		}
-	}
-	return g
-}
-
-func (s *stubExecutor) resolveReference(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
-	if uri.IsEmpty() {
-		return gemini.Attachment{}, nil
-	}
+func (s *stubResolver) Resolve(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
 	if s.resolve != nil {
 		return s.resolve(ctx, uri.ReferenceURL)
 	}
 	return gemini.Attachment{MIMEType: "image/png", Data: []byte(uri.ReferenceURL)}, nil
 }
 
-// countingAIClient は、アップロード回数を数えるための AI クライアントモックです。
-// 重複アップロードの検証には呼び出し回数そのものが必要なので、bool フラグを持つ
-// mockAIClient とは別に用意しています。
-type countingAIClient struct {
-	mockAIClient
-	uploads     atomic.Int64
-	uploadDelay time.Duration
-	uploadErr   error
+// newStubGenerator は、参照解決をスタブに差し替えた Generator と、送信内容を
+// 記録するクライアントを返します。
+func newStubGenerator(t *testing.T, resolver ports.ReferenceResolver, opts ...Option) (*Generator, *fakeClient) {
+	t.Helper()
+	client := &fakeClient{}
+	g, err := New(client, resolver, opts...)
+	require.NoError(t, err)
+	return g, client
 }
 
-func (m *countingAIClient) UploadFile(_ context.Context, r io.Reader, mimeType, _ string) (gemini.UploadedFile, error) {
-	if _, err := io.ReadAll(r); err != nil {
-		return gemini.UploadedFile{}, err
+// --- テストデータ ---
+
+func createPNGData(t *testing.T) []byte {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	for x := range 2 {
+		for y := range 2 {
+			img.Set(x, y, color.RGBA{R: 255, A: 255})
+		}
 	}
-	if m.uploadDelay > 0 {
-		time.Sleep(m.uploadDelay)
-	}
-	if m.uploadErr != nil {
-		return gemini.UploadedFile{}, m.uploadErr
-	}
-	m.uploads.Add(1)
-	m.lastUploadMIMEType = mimeType
-	return gemini.UploadedFile{URI: MockFileUploadURI, Name: MockFileUploadName}, nil
+
+	buf := new(bytes.Buffer)
+	require.NoError(t, png.Encode(buf, img))
+	return buf.Bytes()
 }
