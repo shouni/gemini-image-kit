@@ -194,3 +194,29 @@ func TestNewAllowsVertexResolverWhenBackendUndeclared(t *testing.T) {
 		t.Error("未申告のクライアントを Vertex と見なしてはいけません")
 	}
 }
+
+// TestNewRejectsFileAPIResolverOnVertex は、Gemini API 専用の resolver に Vertex AI の
+// クライアントを組み合わせた取り違えを構築時に弾くことを確認します。
+//
+// 弾かないと生成は「成功」してしまいます。Vertex に File API は無いのでアップロードが
+// 必ず失敗し、チェーンは毎回インラインへ落ちるためです。結果は正しいのに、gs:// の
+// 参照を 2 回ダウンロード（アップロード試行ぶんと取得ぶん）し、転送ゼロの経路を
+// 失ったまま警告ログを出し続ける — いちばん気付きにくい失敗の仕方です。
+func TestNewRejectsFileAPIResolverOnVertex(t *testing.T) {
+	upload := newTestFileAPIResolver(t, FileAPIResolverConfig{})
+
+	if _, err := New(&fakeClient{vertexAI: true}, upload); !errors.Is(err, ErrGeminiAPIRequired) {
+		t.Fatalf("error = %v, want ErrGeminiAPIRequired", err)
+	}
+
+	// チェーンに含まれていても同じく弾く。
+	chain := NewResolverChain(upload, newTestFetchResolver(t, FetchResolverConfig{}))
+	if _, err := New(&fakeClient{vertexAI: true}, chain); !errors.Is(err, ErrGeminiAPIRequired) {
+		t.Errorf("chain error = %v, want ErrGeminiAPIRequired", err)
+	}
+
+	// Gemini API のクライアントとなら通る。
+	if _, err := New(&fakeClient{vertexAI: false}, chain); err != nil {
+		t.Errorf("Gemini API バックエンドで error = %v, want nil", err)
+	}
+}

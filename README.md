@@ -373,9 +373,9 @@ Gemini API バックエンド専用です（Vertex AI に File API はありま�
 
 | resolver | 解決方法 | 依存 | 制約 |
 | --- | --- | --- | --- |
-| `NewGCSResolver()` | `gs://` を転送せず直接参照（最も安い） | **なし** | Vertex AI 専用 |
+| `NewGCSResolver()` | `gs://` を転送せず直接参照（最も安い） | **なし** | Vertex AI 専用（`New` が強制） |
 | `NewFetchResolver(cfg)` | 取得してバイト列をインライン送信 | Reader / Downloader | なし |
-| `NewFileAPIResolver(cfg)` | File API へアップロードして URI 参照（キャッシュ + singleflight）。`ImageURI.FileAPIURI` が設定済みならアップロードを省いてそれを使う | Files / Reader / Downloader / Cache | Gemini API 専用 |
+| `NewFileAPIResolver(cfg)` | File API へアップロードして URI 参照（キャッシュ + singleflight）。`ImageURI.FileAPIURI` が設定済みならアップロードを省いてそれを使う | Files / Reader / Downloader / Cache | Gemini API 専用（`New` が強制） |
 
 `ResolverChain` は先頭から順に試し、`ports.ErrResolverNotApplicable`（管轄外）を返した resolver だけ読み飛ばします。取得失敗のような実エラーはその場で返します — 次へ流すと、ネットワーク障害が「参照を解決できません」にすり替わって原因が消えるためです。誰も扱えなければ `ErrUnresolvedReference` になります（経路の設定漏れ）。
 
@@ -392,7 +392,14 @@ generator.NewGCSResolver()
 
 `FileAPIResolver` はアップロードに失敗すると警告ログを出して**辞退**し、次の resolver に委ねます（アップロードは送信量を減らすための最適化なので、その失敗で生成自体を落としません）。ただし失敗の原因が呼び出し側のキャンセルである場合は辞退せず、キャンセルをそのまま返します。
 
-Vertex AI 専用の resolver に Gemini API のクライアントを組み合わせると、`generator.New` が構築時に `ErrVertexAIRequired` を返します（生成時に不可解な失敗をするより、構築時に落とします）。
+バックエンド制約のある resolver をもう一方のクライアントと組み合わせると、`generator.New` が**構築時に**弾きます。生成時まで気付けないと、どちらも見つけにくい壊れ方をするためです。
+
+| 組み合わせ | エラー | 弾かないとどうなるか |
+| --- | --- | --- |
+| `GCSResolver` + Gemini API | `ErrVertexAIRequired` | Gemini API は `gs://` を解決できず、参照が一切効かない |
+| `FileAPIResolver` + Vertex AI | `ErrGeminiAPIRequired` | Vertex に File API が無いのでアップロードが必ず失敗し、毎回インラインへ落ちる。**生成は成功する**ぶん気付きにくく、`gs://` を 2 回ダウンロードし続ける |
+
+判定できるのは `gemini.BackendInspector` を満たすクライアントだけで、バックエンドを申告しないクライアント（テスト用フェイクなど）は素通しします。
 
 File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
 
@@ -424,7 +431,8 @@ File API 上のファイルには保持期限があるため、`CacheTTL` はそ
 コンストラクタの必須依存に対するセンチネルは次のとおりです。
 
 - `ErrAIClientRequired` / `ErrResolverRequired`: `New` にクライアント / resolver が渡されなかった場合。
-- `ErrVertexAIRequired`: Vertex AI 専用の resolver に Gemini API のクライアントを組み合わせた場合。
+- `ErrVertexAIRequired`: Vertex AI 専用の resolver（`GCSResolver`）に Gemini API のクライアントを組み合わせた場合。
+- `ErrGeminiAPIRequired`: Gemini API 専用の resolver（`FileAPIResolver`）に Vertex AI のクライアントを組み合わせた場合。
 - `ErrReaderRequired` / `ErrHTTPClientRequired`: `NewFetchResolver` / `NewFileAPIResolver` に取得系の依存が渡されなかった場合。
 - `ErrFileManagerRequired` / `ErrCacheRequired`: `NewFileAPIResolver` に `Files` / `Cache` が渡されなかった場合。
 

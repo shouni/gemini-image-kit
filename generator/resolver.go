@@ -13,13 +13,34 @@ import (
 	"github.com/shouni/gemini-image-kit/ports"
 )
 
-// vertexOnlyResolver は、Vertex AI バックエンドでしか意味を持たない resolver が
-// 実装するパッケージ内部の面です。New が構築時に取り違えを弾くために使います。
+// backend は、resolver が成立するバックエンドの制約です。
+type backend int
+
+const (
+	// backendAny はどちらのバックエンドでも使えることを表します。
+	backendAny backend = iota
+	// backendVertexAI は Vertex AI でしか成立しないことを表します（gs:// の直接参照）。
+	backendVertexAI
+	// backendGeminiAPI は Gemini API でしか成立しないことを表します（File API）。
+	backendGeminiAPI
+)
+
+// backendConstrained は、特定のバックエンドでしか意味を持たない resolver が実装する
+// パッケージ内部の面です。New が構築時に取り違えを弾くために使います。
 //
 // 非公開なのは、この判定がキット同梱の resolver の都合であり、利用側が自作した
 // resolver に実装させたい契約ではないためです。
-type vertexOnlyResolver interface {
-	requiresVertexAI() bool
+type backendConstrained interface {
+	requiredBackend() backend
+}
+
+// requiredBackend は resolver のバックエンド制約を返します。制約を表明しない
+// resolver（FetchResolver や利用側の自作実装）は backendAny です。
+func requiredBackend(r ports.ReferenceResolver) backend {
+	if c, ok := r.(backendConstrained); ok {
+		return c.requiredBackend()
+	}
+	return backendAny
 }
 
 // ResolverChain は複数の resolver を順に試します。
@@ -48,14 +69,18 @@ func (c *ResolverChain) Resolve(ctx context.Context, uri ports.ImageURI) (gemini
 	return gemini.Attachment{}, fmt.Errorf("%w: %q", ErrUnresolvedReference, uri.ReferenceURL)
 }
 
-// requiresVertexAI は、連なる resolver のいずれかが Vertex AI 専用なら true を返します。
-func (c *ResolverChain) requiresVertexAI() bool {
+// requiredBackend は、連なる resolver のうち最初に見つかった制約を返します。
+//
+// 矛盾する組み合わせ（gs:// 直参照 + File API）を並べた場合、ここでは最初のものしか
+// 見ませんが、実クライアントはどちらか一方のバックエンドなので、New では必ず
+// どちらかの制約が食い違って弾かれます。
+func (c *ResolverChain) requiredBackend() backend {
 	for _, r := range c.resolvers {
-		if v, ok := r.(vertexOnlyResolver); ok && v.requiresVertexAI() {
-			return true
+		if b := requiredBackend(r); b != backendAny {
+			return b
 		}
 	}
-	return false
+	return backendAny
 }
 
 // GCSResolver は gs:// URI を、バイト列を転送せずそのまま参照させます。
@@ -71,7 +96,7 @@ type GCSResolver struct{}
 // NewGCSResolver は GCSResolver を作ります。設定項目はありません。
 func NewGCSResolver() *GCSResolver { return &GCSResolver{} }
 
-func (r *GCSResolver) requiresVertexAI() bool { return true }
+func (r *GCSResolver) requiredBackend() backend { return backendVertexAI }
 
 // Resolve は gs:// URI を URI 参照の添付にします。gs:// 以外は辞退します。
 func (r *GCSResolver) Resolve(_ context.Context, uri ports.ImageURI) (gemini.Attachment, error) {

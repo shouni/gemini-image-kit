@@ -123,12 +123,19 @@ func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Opti
 	inspector, declared := client.(gemini.BackendInspector)
 	isVertexAI := declared && inspector.IsVertexAI()
 
-	// Vertex 専用の resolver を弾くのは、バックエンドが Vertex でないと**申告された**
-	// ときだけです。申告が無いクライアント（テスト用フェイクや、判定を転送しない
-	// ラッパー）は素通しします。「Vertex でない証拠が無い」ことを「Vertex でない」と
-	// 断定すると、実クライアント以外では GCSResolver が一切使えなくなるためです。
-	if v, ok := resolver.(vertexOnlyResolver); ok && v.requiresVertexAI() && declared && !isVertexAI {
-		return nil, ErrVertexAIRequired
+	// バックエンド制約を持つ resolver を弾くのは、食い違いが**申告された**ときだけです。
+	// 申告が無いクライアント（テスト用フェイクや、判定を転送しないラッパー）は
+	// 素通しします。「証拠が無い」ことを「食い違っている」と断定すると、実クライアント
+	// 以外では制約付き resolver が一切使えなくなるためです。
+	switch requiredBackend(resolver) {
+	case backendVertexAI:
+		if declared && !isVertexAI {
+			return nil, ErrVertexAIRequired
+		}
+	case backendGeminiAPI:
+		if isVertexAI {
+			return nil, ErrGeminiAPIRequired
+		}
 	}
 
 	g := &Generator{

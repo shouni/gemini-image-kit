@@ -83,6 +83,8 @@ type FileAPIResolver struct {
 	uploadGroup singleflight.Group
 }
 
+func (r *FileAPIResolver) requiredBackend() backend { return backendGeminiAPI }
+
 // NewFileAPIResolver はアップロード + キャッシュで参照を解決する resolver を作ります。
 func NewFileAPIResolver(cfg FileAPIResolverConfig) (*FileAPIResolver, error) {
 	if cfg.Files == nil {
