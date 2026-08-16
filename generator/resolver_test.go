@@ -193,17 +193,26 @@ func TestResolverChainReportsUnresolved(t *testing.T) {
 	}
 }
 
-// TestResolverChainInheritsVertexRequirement は、Vertex 専用 resolver を含む
-// チェーンがその制約を引き継ぐことを確認します。制約が消えると、Gemini API の
-// クライアントとの取り違えを構築時に弾けなくなります。
-func TestResolverChainInheritsVertexRequirement(t *testing.T) {
-	chain := NewResolverChain(NewGCSResolver(), newTestFetchResolver(t, FetchResolverConfig{}))
-	if !chain.requiresVertexAI() {
-		t.Error("GCSResolver を含むチェーンは Vertex AI 必須であるべきです")
-	}
+// TestResolverChainInheritsBackendConstraint は、制約付き resolver を含むチェーンが
+// その制約を引き継ぐことを確認します。制約が消えると、バックエンドの取り違えを
+// 構築時に弾けなくなります。
+func TestResolverChainInheritsBackendConstraint(t *testing.T) {
+	fetch := newTestFetchResolver(t, FetchResolverConfig{})
 
-	plain := NewResolverChain(newTestFetchResolver(t, FetchResolverConfig{}))
-	if plain.requiresVertexAI() {
-		t.Error("取得のみのチェーンにバックエンド制約は不要です")
+	tests := []struct {
+		name  string
+		chain *ResolverChain
+		want  backend
+	}{
+		{"GCS を含む", NewResolverChain(NewGCSResolver(), fetch), backendVertexAI},
+		{"File API を含む", NewResolverChain(newTestFileAPIResolver(t, FileAPIResolverConfig{}), fetch), backendGeminiAPI},
+		{"取得のみ", NewResolverChain(fetch), backendAny},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.chain.requiredBackend(); got != tt.want {
+				t.Errorf("requiredBackend() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

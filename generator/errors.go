@@ -32,6 +32,13 @@ var (
 	// 判定できるのは gemini.BackendInspector を満たすクライアントだけで、申告が
 	// 無い場合は素通しします（詳細は New を参照）。
 	ErrVertexAIRequired = errors.New("imagekit: resolver requires the Vertex AI backend")
+	// ErrGeminiAPIRequired は、Gemini API 専用の resolver（FileAPIResolver）に
+	// Vertex AI のクライアントが組み合わされた場合に New が返します。
+	//
+	// Vertex AI に File API は無いためアップロードは必ず失敗し、経路は毎回インラインへ
+	// 落ちます。生成自体は成功してしまうぶん気付きにくく、gs:// の参照を無駄に 2 回
+	// ダウンロードし続けるので、構築時に落とします。
+	ErrGeminiAPIRequired = errors.New("imagekit: resolver requires the Gemini API backend")
 	// ErrReaderRequired は、resolver に Reader が渡されなかった場合に返されます。
 	ErrReaderRequired = errors.New("imagekit: Reader is required")
 	// ErrHTTPClientRequired は、resolver に Downloader が渡されなかった場合に返されます。
