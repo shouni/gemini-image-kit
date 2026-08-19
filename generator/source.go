@@ -9,9 +9,8 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
-
-	"github.com/shouni/go-utils/urlpath"
 
 	"github.com/shouni/gemini-image-kit/internal/imgutil"
 	"github.com/shouni/gemini-image-kit/ports"
@@ -148,10 +147,10 @@ func detectUploadSource(br *bufio.Reader) (string, error) {
 
 // isGCSURI は、指定された URI が GCS（Google Cloud Storage）を指すかを判定します。
 //
-// 判定は go-utils に委ねます。自前実装を持つと述語がズレて「呼び出し側の入力検証は
-// 通ったのに生成で落ちる」という食い違いが生まれるためです。公開していないのは、
-// URI スキームの述語がこのキットの関心ではないためで、利用側は urlpath.IsGCSURI を
-// 直接使ってください。
+// スキームの大文字小文字は区別しません。呼び出し側（アプリの設定検証）は
+// remoteio.IsGCSURI で区別する側なので、このキットの方が緩くなります。向きが逆だと
+// 「入力検証は通ったのに生成で落ちる」という食い違いになるため、緩い側に倒しています。
+// 公開しないのは、URI スキームの述語がこのキットの関心ではないためです。
 func isGCSURI(uri string) bool {
-	return urlpath.IsGCSURI(uri)
+	return strings.HasPrefix(strings.ToLower(uri), "gs://")
 }
