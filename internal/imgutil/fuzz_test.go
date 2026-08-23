@@ -51,7 +51,7 @@ func FuzzDetectMIMEType(f *testing.F) {
 		}
 
 		// 圧縮対象と判定したものは、圧縮関数に渡しても panic してはならない。
-		if IsCompressibleMimeType(mimeType) {
+		if IsCompressibleMIMEType(mimeType) {
 			_, _ = CompressToJPEG(bytes.NewReader(data), 75)
 		}
 	})
