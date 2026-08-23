@@ -50,7 +50,7 @@
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装（`Generator`）と、参照画像の解決を担う resolver 群（`GCSResolver` / `FetchResolver` / `FileAPIResolver` / `ResolverChain`）。 |
-| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ReferenceResolver` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。 |
+| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ReferenceResolver` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。応答を保存するための小さなヘルパー `ExtensionByMIMEType` もここにあります。 |
 
 `generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
 
@@ -88,11 +88,29 @@ g, err := generator.New(client, resolver,
 | フィールド | 内容 |
 | --- | --- |
 | `Data` | 生成された画像のバイト列です。 |
-| `MimeType` | 画像の MIME type。保存時の拡張子や Content-Type の決定に使います。 |
+| `MimeType` | 画像の MIME type。Content-Type にそのまま使えます。保存時の拡張子は `ports.ExtensionByMIMEType` で引けます（下記）。 |
 | `UsedSeed` | 送信したシード（既定では自動採番された値）。下記「シードと再現性」を参照。 |
 | `Model` | 生成に使ったモデル名。リクエストを持ち回らずコスト集計や再現に使えます。 |
 | `Prompt` | 実際に送信した最終プロンプト（ネガティブプロンプト結合済み）。 |
 | `Usage` | トークン使用量（`*gemini.TokenUsage`）。モデルが返さない場合は nil です。 |
+
+### 保存ファイルの拡張子 (`ports.ExtensionByMIMEType`)
+
+```go
+path := fmt.Sprintf("keyframe%s", ports.ExtensionByMIMEType(resp.MimeType)) // => keyframe.jpg
+```
+
+`image/jpeg` → `.jpg`、`image/png` → `.png`、`image/webp` → `.webp`、`image/gif` → `.gif` を返します。
+判定できない MIME type には `.png` を返すので、保存そのものが止まることはありません（誤った拡張子の実害は
+保存パスの見た目に留まり、配信時の Content-Type は `MimeType` から別途付くためです）。
+
+名前と役割は標準の `mime.ExtensionsByType` に合わせてあります。標準版を使わないのは、OS の MIME データベース
+次第で返る拡張子が変わるためです（`image/jpeg` に `.jpe` が返る環境があります）。保存パスは URL や履歴に
+残り続けるので、対応表を固定しています。
+
+`Content-Type` ヘッダーの値をそのまま渡せます（`image/jpeg; charset=binary` のようなパラメーター付きでも
+メディアタイプだけを見ます）。正式な MIME type ではない `image/jpg` も、生成モデルの応答に実際に現れるため
+`.jpg` として扱います。
 
 ---
 

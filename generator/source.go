@@ -113,7 +113,7 @@ func newCompression(enabled bool, quality int) compression {
 
 // applies は、その MIMEType を圧縮対象とするかを返します。
 func (c compression) applies(mimeType string) bool {
-	return c.enabled && imgutil.IsCompressibleMimeType(mimeType)
+	return c.enabled && imgutil.IsCompressibleMIMEType(mimeType)
 }
 
 // uploadDisplayName は、ソース URI から File API に付ける表示名を作ります。

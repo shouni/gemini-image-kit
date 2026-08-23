@@ -26,8 +26,8 @@ func CompressToJPEG(r io.Reader, quality int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// IsCompressibleMimeType は、圧縮処理対象となるMIMEタイプを判定します。
-func IsCompressibleMimeType(mimeType string) bool {
+// IsCompressibleMIMEType は、圧縮処理対象となるMIMEタイプを判定します。
+func IsCompressibleMIMEType(mimeType string) bool {
 	switch mimeType {
 	case "image/png", "image/gif":
 		return true

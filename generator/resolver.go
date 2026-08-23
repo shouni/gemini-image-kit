@@ -175,7 +175,7 @@ func (r *FetchResolver) Resolve(ctx context.Context, uri ports.ImageURI) (gemini
 // fileAttachment は URI 参照の添付を生成します。
 //
 // MIME type は mimeHintURI の拡張子から推測します。判別できない場合は設定しません
-// （理由は imgutil.GuessMIMEType を参照）。
+// （理由は imgutil.MIMETypeByPath を参照）。
 func fileAttachment(fileURI, mimeHintURI string) gemini.Attachment {
-	return gemini.Attachment{URI: fileURI, MIMEType: imgutil.GuessMIMEType(mimeHintURI)}
+	return gemini.Attachment{URI: fileURI, MIMEType: imgutil.MIMETypeByPath(mimeHintURI)}
 }
