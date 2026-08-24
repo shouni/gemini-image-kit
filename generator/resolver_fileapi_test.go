@@ -7,6 +7,7 @@ import (
 	"image"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -132,22 +133,24 @@ func TestFileAPIResolverReusesUpload(t *testing.T) {
 // 1回のアップロードにまとまることを確認します。キャッシュは完了後にしか書かれないため、
 // singleflight が無いと並行呼び出しの数だけ File API 上に重複ファイルができます。
 func TestFileAPIResolverDeduplicatesConcurrentUploads(t *testing.T) {
-	files := &countingUploader{uploadDelay: 20 * time.Millisecond}
-	r := newTestFileAPIResolver(t, FileAPIResolverConfig{Files: files})
+	synctest.Test(t, func(t *testing.T) {
+		files := &countingUploader{uploadDelay: 20 * time.Millisecond}
+		r := newTestFileAPIResolver(t, FileAPIResolverConfig{Files: files})
 
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() {
-			if _, err := r.Resolve(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/same.png"}); err != nil {
-				t.Errorf("Resolve() error = %v", err)
-			}
-		})
-	}
-	wg.Wait()
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Go(func() {
+				if _, err := r.Resolve(context.Background(), ports.ImageURI{ReferenceURL: "https://example.com/same.png"}); err != nil {
+					t.Errorf("Resolve() error = %v", err)
+				}
+			})
+		}
+		wg.Wait()
 
-	if got := files.uploads.Load(); got != 1 {
-		t.Errorf("uploads = %d, want 1 (concurrent calls must share one upload)", got)
-	}
+		if got := files.uploads.Load(); got != 1 {
+			t.Errorf("uploads = %d, want 1 (concurrent calls must share one upload)", got)
+		}
+	})
 }
 
 // TestFileAPIResolverDeclinesOnUploadFailure は、アップロードが失敗したときに
@@ -168,16 +171,28 @@ func TestFileAPIResolverDeclinesOnUploadFailure(t *testing.T) {
 // 「アップロード失敗」と誤警告した上で同じ画像を再フェッチし、同じキャンセルで
 // 落ちていました（無駄な二重フェッチ）。
 func TestFileAPIResolverCancelDoesNotDecline(t *testing.T) {
-	files := &countingUploader{uploadDelay: 50 * time.Millisecond}
-	r := newTestFileAPIResolver(t, FileAPIResolverConfig{Files: files})
+	synctest.Test(t, func(t *testing.T) {
+		const uploadDelay = 50 * time.Millisecond
+		files := &countingUploader{uploadDelay: uploadDelay}
+		r := newTestFileAPIResolver(t, FileAPIResolverConfig{Files: files})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // 呼び出し前にキャンセル済みにする
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // 呼び出し前にキャンセル済みにする
 
-	_, err := r.Resolve(ctx, ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("error = %v, want context.Canceled (辞退せず伝播する)", err)
-	}
+		_, err := r.Resolve(ctx, ports.ImageURI{ReferenceURL: "https://example.com/char.png"})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context.Canceled (辞退せず伝播する)", err)
+		}
+
+		// アップロードは呼び出し側のキャンセルでは止まらない設計（singleflight で
+		// 相乗りしている他の呼び出しを巻き添えにしないため）なので、Resolve が
+		// 返ったあとも走り続けます。バブルはその完了まで見届けてから閉じます。
+		time.Sleep(uploadDelay)
+		synctest.Wait()
+		if got := files.uploads.Load(); got != 1 {
+			t.Errorf("uploads = %d, want 1（キャンセルした呼び出しの裏で完走する）", got)
+		}
+	})
 }
 
 // TestFileAPIResolverCachesUploadedURI は、アップロード結果が素の URI 文字列として
