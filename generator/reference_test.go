@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -28,115 +29,128 @@ func newFusionRequest(urls ...string) ports.ImageRequest {
 // 入力順のままであることを確認します。順序はモデルの解釈に影響するため、
 // 取得完了順に並べ替わってはいけません。
 func TestCollectImageAttachmentsPreservesOrder(t *testing.T) {
-	// 後ろの画像ほど速く返るようにして、完了順と入力順をずらす。
-	delays := map[string]time.Duration{"a": 30 * time.Millisecond, "b": 15 * time.Millisecond, "c": 0}
-	resolver := &stubResolver{
-		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
-			time.Sleep(delays[rawURL])
-			return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
-		},
-	}
-	g, client := newStubGenerator(t, resolver)
+	// 取得の遅延は仮想時間で消化されます。完了順のずれは保たれたまま実時間は消費しません。
+	synctest.Test(t, func(t *testing.T) {
+		// 後ろの画像ほど速く返るようにして、完了順と入力順をずらす。
+		delays := map[string]time.Duration{"a": 30 * time.Millisecond, "b": 15 * time.Millisecond, "c": 0}
+		resolver := &stubResolver{
+			resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
+				time.Sleep(delays[rawURL])
+				return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
+			},
+		}
+		g, client := newStubGenerator(t, resolver)
 
-	if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
-		t.Fatalf("Generate() error = %v", err)
-	}
+		if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
 
-	attachments := client.attachments()
-	got := make([]string, 0, len(attachments))
-	for _, attachment := range attachments {
-		got = append(got, string(attachment.Data))
-	}
-	want := []string{"a", "b", "c"}
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Errorf("attachments = %v, want %v", got, want)
-	}
+		attachments := client.attachments()
+		got := make([]string, 0, len(attachments))
+		for _, attachment := range attachments {
+			got = append(got, string(attachment.Data))
+		}
+		want := []string{"a", "b", "c"}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("attachments = %v, want %v", got, want)
+		}
+	})
 }
 
 // TestCollectImageAttachmentsRunsConcurrently は、参照画像の取得が並行に走ることを
 // 確認します。全件が揃うまで解放されないバリアを使うため、逐次実装ならタイムアウトします。
 func TestCollectImageAttachmentsRunsConcurrently(t *testing.T) {
-	const refs = 3
-	var (
-		mu      sync.Mutex
-		entered int
-		barrier = make(chan struct{})
-	)
-	resolver := &stubResolver{
-		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
-			mu.Lock()
-			entered++
-			reached := entered == refs
-			mu.Unlock()
-			if reached {
-				close(barrier)
-			}
-			select {
-			case <-barrier:
-				return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
-			case <-time.After(2 * time.Second):
-				return gemini.Attachment{}, errors.New("timed out waiting for concurrent fetches")
-			}
-		},
-	}
-	g, client := newStubGenerator(t, resolver)
+	synctest.Test(t, func(t *testing.T) {
+		const refs = 3
+		var (
+			mu      sync.Mutex
+			entered int
+			barrier = make(chan struct{})
+		)
+		resolver := &stubResolver{
+			resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
+				mu.Lock()
+				entered++
+				reached := entered == refs
+				mu.Unlock()
+				if reached {
+					close(barrier)
+				}
+				select {
+				case <-barrier:
+					return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
+				case <-time.After(2 * time.Second):
+					return gemini.Attachment{}, errors.New("timed out waiting for concurrent fetches")
+				}
+			},
+		}
+		g, client := newStubGenerator(t, resolver)
 
-	if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
-		t.Fatalf("Generate() error = %v", err)
-	}
-	if got := len(client.attachments()); got != refs {
-		t.Errorf("attachments = %d, want %d", got, refs)
-	}
+		if _, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c")); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if got := len(client.attachments()); got != refs {
+			t.Errorf("attachments = %d, want %d", got, refs)
+		}
+	})
 }
 
 // TestCollectImageAttachmentsReportsFirstErrorByIndex は、複数が失敗しても報告される
 // エラーが入力順で最初のものに固定されることを確認します。並行実行では完了順が
 // 実行ごとに変わるため、そのまま返すとエラーが非決定になります。
 func TestCollectImageAttachmentsReportsFirstErrorByIndex(t *testing.T) {
-	first := errors.New("first reference failed")
-	second := errors.New("second reference failed")
-	resolver := &stubResolver{
-		resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
-			switch rawURL {
-			case "b":
-				time.Sleep(20 * time.Millisecond) // 後から失敗させる
-				return gemini.Attachment{}, first
-			case "c":
-				return gemini.Attachment{}, second
-			default:
-				return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
-			}
-		},
-	}
-	g, _ := newStubGenerator(t, resolver)
+	synctest.Test(t, func(t *testing.T) {
+		first := errors.New("first reference failed")
+		second := errors.New("second reference failed")
+		resolver := &stubResolver{
+			resolve: func(_ context.Context, rawURL string) (gemini.Attachment, error) {
+				switch rawURL {
+				case "b":
+					time.Sleep(20 * time.Millisecond) // 後から失敗させる
+					return gemini.Attachment{}, first
+				case "c":
+					return gemini.Attachment{}, second
+				default:
+					return gemini.Attachment{MIMEType: "image/png", Data: []byte(rawURL)}, nil
+				}
+			},
+		}
+		g, _ := newStubGenerator(t, resolver)
 
-	_, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c"))
-	if !errors.Is(err, first) {
-		t.Errorf("error = %v, want the error from the first failing reference (%v)", err, first)
-	}
+		_, err := g.Generate(context.Background(), newFusionRequest("a", "b", "c"))
+		if !errors.Is(err, first) {
+			t.Errorf("error = %v, want the error from the first failing reference (%v)", err, first)
+		}
+	})
 }
 
 // TestCollectImageAttachmentsPropagatesCancellation は、呼び出し側の context 終了が
 // 打ち切り理由としてそのまま返ることを確認します。
 func TestCollectImageAttachmentsPropagatesCancellation(t *testing.T) {
-	resolver := &stubResolver{
-		resolve: func(ctx context.Context, _ string) (gemini.Attachment, error) {
-			<-ctx.Done()
-			return gemini.Attachment{}, ctx.Err()
-		},
-	}
-	g, _ := newStubGenerator(t, resolver)
+	synctest.Test(t, func(t *testing.T) {
+		resolver := &stubResolver{
+			resolve: func(ctx context.Context, _ string) (gemini.Attachment, error) {
+				<-ctx.Done()
+				return gemini.Attachment{}, ctx.Err()
+			},
+		}
+		g, _ := newStubGenerator(t, resolver)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(10 * time.Millisecond)
+		ctx, cancel := context.WithCancel(context.Background())
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := g.Generate(ctx, newFusionRequest("a", "b"))
+			errCh <- err
+		}()
+
+		// 取得が ctx 待ちに入ってからキャンセルする（待ち時間の見積もりに頼らない）。
+		synctest.Wait()
 		cancel()
-	}()
 
-	_, err := g.Generate(ctx, newFusionRequest("a", "b"))
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("error = %v, want context.Canceled", err)
-	}
+		if err := <-errCh; !errors.Is(err, context.Canceled) {
+			t.Errorf("error = %v, want context.Canceled", err)
+		}
+	})
 }
 
 // TestCollectImageAttachmentsSkipsEmpty は、参照先を持たない要素が resolver へ
