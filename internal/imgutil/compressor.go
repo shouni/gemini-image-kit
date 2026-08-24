@@ -1,5 +1,5 @@
-// Package imgutil は、画像フォーマットの判定・検出、JPEG圧縮など、
-// バイナリレベルでの画像処理ユーティリティを提供します。
+// Package imgutil は、画像フォーマットの判定（拡張子・MIMEType・内容からの検出）と
+// JPEG 圧縮のユーティリティを提供します。
 package imgutil
 
 import (

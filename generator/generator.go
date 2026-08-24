@@ -109,9 +109,9 @@ func WithRequestTimeout(d time.Duration) Option {
 //	generator.New(client, generator.NewResolverChain(fileAPIResolver, fetchResolver))
 //
 // バックエンド判定は gemini.BackendInspector をオプショナルインターフェースとして
-// 探ります。安全設定と人物生成の既定値がこの判定で切り替わり、Vertex AI 専用の
-// resolver に Gemini API のクライアントを組み合わせた取り違えは ErrVertexAIRequired に
-// なります。バックエンドを申告しないクライアントは弾きません。
+// 探ります。安全設定と人物生成の既定値がこの判定で切り替わり、バックエンド制約を
+// 持つ resolver との取り違えは ErrVertexAIRequired / ErrGeminiAPIRequired になります。
+// バックエンドを申告しないクライアントは弾きません。
 func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Option) (*Generator, error) {
 	if client == nil {
 		return nil, ErrAIClientRequired
@@ -123,10 +123,9 @@ func New(client gemini.Generator, resolver ports.ReferenceResolver, opts ...Opti
 	inspector, declared := client.(gemini.BackendInspector)
 	isVertexAI := declared && inspector.IsVertexAI()
 
-	// バックエンド制約を持つ resolver を弾くのは、食い違いが**申告された**ときだけです。
-	// 申告が無いクライアント（テスト用フェイクや、判定を転送しないラッパー）は
-	// 素通しします。「証拠が無い」ことを「食い違っている」と断定すると、実クライアント
-	// 以外では制約付き resolver が一切使えなくなるためです。
+	// 素通しするのは、「証拠が無い」ことを「食い違っている」と断定すると、実クライアント
+	// 以外（テスト用フェイクや、判定を転送しないラッパー）では制約付き resolver が
+	// 一切使えなくなるためです。
 	switch requiredBackend(resolver) {
 	case backendVertexAI:
 		if declared && !isVertexAI {
