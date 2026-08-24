@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -147,37 +148,41 @@ func TestGenerateValidatesBeforeRateLimit(t *testing.T) {
 
 // TestGenerateAppliesRateLimit は、WithRateLimit が呼び出し間隔を空けることを確認します。
 func TestGenerateAppliesRateLimit(t *testing.T) {
-	g, _ := newStubGenerator(t, &stubResolver{}, WithRateLimit(30*time.Millisecond, 1))
+	synctest.Test(t, func(t *testing.T) {
+		g, _ := newStubGenerator(t, &stubResolver{}, WithRateLimit(30*time.Millisecond, 1))
 
-	start := time.Now()
-	for range 3 {
-		if _, err := g.Generate(context.Background(), batchRequest("p")); err != nil {
-			t.Fatalf("Generate() error = %v", err)
+		start := time.Now()
+		for range 3 {
+			if _, err := g.Generate(context.Background(), batchRequest("p")); err != nil {
+				t.Fatalf("Generate() error = %v", err)
+			}
 		}
-	}
-	// 1回目は即時、2・3回目がそれぞれ 30ms 待つので合計 60ms 以上掛かるはず。
-	if elapsed := time.Since(start); elapsed < 55*time.Millisecond {
-		t.Errorf("elapsed = %v, rate limit not applied", elapsed)
-	}
+		// 1回目は即時、2・3回目がそれぞれ 30ms 待つ。仮想時計なので合計はちょうど 60ms。
+		if want := 60 * time.Millisecond; time.Since(start) != want {
+			t.Errorf("elapsed = %v, want %v (rate limit not applied)", time.Since(start), want)
+		}
+	})
 }
 
 // TestGenerateRequestTimeoutBoundsCall は、WithRequestTimeout が1回の生成を
 // 打ち切ることを確認します。
 func TestGenerateRequestTimeoutBoundsCall(t *testing.T) {
-	g, client := newStubGenerator(t, &stubResolver{}, WithRequestTimeout(5*time.Millisecond))
-	client.generate = func(ctx context.Context, _, _ string) (*gemini.Response, error) {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-			return &gemini.Response{
-				Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("stub-image")}},
-			}, nil
+	synctest.Test(t, func(t *testing.T) {
+		g, client := newStubGenerator(t, &stubResolver{}, WithRequestTimeout(5*time.Millisecond))
+		client.generate = func(ctx context.Context, _, _ string) (*gemini.Response, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+				return &gemini.Response{
+					Attachments: []gemini.Attachment{{MIMEType: "image/png", Data: []byte("stub-image")}},
+				}, nil
+			}
 		}
-	}
 
-	_, err := g.Generate(context.Background(), batchRequest("p"))
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
-	}
+		_, err := g.Generate(context.Background(), batchRequest("p"))
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("error = %v, want context.DeadlineExceeded", err)
+		}
+	})
 }
