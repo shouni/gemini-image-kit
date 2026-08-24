@@ -59,8 +59,8 @@ func (g *Generator) collectImageAttachments(ctx context.Context, uris []ports.Im
 	return attachments, nil
 }
 
-// collectSequentially は参照が 1 枚以下の場合の経路です。goroutine を起こす意味が
-// ないだけでなく、単一参照の失敗がそのまま素のエラーとして返るようにもなります。
+// collectSequentially は参照が 1 枚以下の場合の経路です。goroutine と打ち切り用の
+// context を起こしても得るものが無いため、そのまま順に解決します。
 func (g *Generator) collectSequentially(ctx context.Context, uris []ports.ImageURI) ([]gemini.Attachment, error) {
 	attachments := make([]gemini.Attachment, 0, len(uris))
 	for _, uri := range uris {
@@ -97,9 +97,8 @@ func firstMeaningfulError(errs []error) error {
 
 // resolveImageAttachment は ImageURI 1 件を resolver に解決させます。
 //
-// 参照先を持たない要素は resolver へ渡さず、空の添付として落とします。エラーに
-// しないのは、「このキャラクターには参照画像が無い」を呼び出し側が要素の欠落として
-// 表現できるようにするためです。
+// 参照先を持たない要素は resolver へ渡さず、空の添付として落とします
+// （エラーにしない理由は ports.ImageURI.IsEmpty を参照）。
 func (g *Generator) resolveImageAttachment(ctx context.Context, uri ports.ImageURI) (gemini.Attachment, error) {
 	if uri.IsEmpty() {
 		return gemini.Attachment{}, nil

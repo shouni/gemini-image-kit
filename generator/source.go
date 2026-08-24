@@ -128,19 +128,20 @@ func uploadDisplayName(rawURI string) string {
 	return filepath.Base(rawURI)
 }
 
-// detectUploadSource は、バッファ付きリーダーに有効な画像データが含まれていることを検証し、MIMETypeを返します。
+// detectUploadSource は、バッファ付きリーダーの先頭を覗いて画像データであることを
+// 検証し、内容から判定した MIMEType を返します。リーダーは消費しません。
 func detectUploadSource(br *bufio.Reader) (string, error) {
 	head, err := br.Peek(512)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("画像ヘッダの読み込みに失敗しました: %w", err)
+		return "", fmt.Errorf("failed to read image header: %w", err)
 	}
 	if len(head) == 0 {
-		return "", fmt.Errorf("画像データが空です")
+		return "", errors.New("image data is empty")
 	}
 
 	detectedMime := imgutil.DetectMIMEType(head)
 	if !imgutil.IsImageMIMEType(detectedMime) {
-		return "", fmt.Errorf("%w (コンテンツ判定: %s)", ErrUnsupportedFileFormat, detectedMime)
+		return "", fmt.Errorf("%w: %s", ErrUnsupportedFileFormat, detectedMime)
 	}
 	return detectedMime, nil
 }

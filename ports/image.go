@@ -33,9 +33,11 @@ func (uri ImageURI) IsEmpty() bool {
 // 設定できます。フィールドを写し取ると go-gemini-client 側の追加のたびに 2 ファイルの
 // 同期が必要になるため、埋め込みにしています。
 //
-// SafetySettings と PersonGeneration は、未指定の場合のみバックエンドに応じた
-// 既定値（安全フィルタ無効・人物生成許可）が補われます。呼び出し側が明示した
-// 値は上書きされません。
+// SafetySettings は未指定の場合のみ、バックエンドが受け付ける閾値で安全フィルタを
+// 無効化する既定値が補われます。明示した値は上書きされません。
+//
+// PersonGeneration は Vertex AI でのみ有効です。未指定なら AllowAll が補われ、
+// Gemini API バックエンドでは API が未対応のため、明示した値も含めて常に落とされます。
 type GenerationOptions struct {
 	Model          string
 	Prompt         string

@@ -211,7 +211,8 @@ func (r *FileAPIResolver) fetchAndUpload(ctx context.Context, fileURI string) (s
 
 // upload は圧縮設定に基づいてアップロードを実行します。
 //
-// 圧縮対象でない形式は bufio.Reader のまま流し、ファイル全体をメモリへ載せません。
+// 圧縮対象でない形式はデコードせず、取得元の bufio.Reader をそのまま渡します
+// （デコード・再エンコードのコストを掛けません）。
 func (r *FileAPIResolver) upload(ctx context.Context, src io.Reader, mimeType, fileURI string) (gemini.UploadedFile, error) {
 	if !r.compression.applies(mimeType) {
 		return r.files.UploadFile(ctx, src, mimeType, uploadDisplayName(fileURI))
