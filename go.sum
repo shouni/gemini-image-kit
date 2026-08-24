@@ -29,8 +29,8 @@ github.com/googleapis/gax-go/v2 v2.24.0 h1:myMaPYyF9MecEmvQqMqomIwn9t/4KCZN9qnws
 github.com/googleapis/gax-go/v2 v2.24.0/go.mod h1:IaTHBDd7NHxSCiu0vEs8pQZu4dGZrWwuSoxCnk16OFM=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/shouni/go-gemini-client v1.18.0 h1:kZctiTZljOwltab+ebKvKpd/hT2EtLNoiBkPl6l203c=
-github.com/shouni/go-gemini-client v1.18.0/go.mod h1:9srP/AW7TL+iHxHQ8a9sm9QFBFwZk3zSDIuCLiTZzok=
+github.com/shouni/go-gemini-client v1.18.1 h1:6hGwqnIb8vsq2r6LSz6wp3ftBm+m5GAsmCNXvSRO36M=
+github.com/shouni/go-gemini-client v1.18.1/go.mod h1:9srP/AW7TL+iHxHQ8a9sm9QFBFwZk3zSDIuCLiTZzok=
 github.com/shouni/netarmor v1.2.4 h1:4XYB72XSbxoSF4Sa6BzTFXR604bIN7hVX+n7dh1WV0g=
 github.com/shouni/netarmor v1.2.4/go.mod h1:LEtX1IYPWgX+6uipKehEmI8z2ftzVC6r9DHensCP4QM=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
