@@ -12,7 +12,7 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットです。
 
-単なる API ラッパーではなく、生の SDK に無いものを足します。**参照画像をどう送るかを差し替えられる仕組み**（`gs://` を転送せず直接参照 / GCS・外部 URL から取得 / File API へ上げてキャッシュ）、インメモリ画像圧縮、リクエスト単位のレート制限・並列度・タイムアウトです。
+単なる API ラッパーではなく、生の SDK に無いものを足します。**参照画像をどう送るかを差し替えられる仕組み**（`gs://` を転送せず直接参照 / GCS・外部 URL から取得 / File API へ上げてキャッシュ）、インメモリ画像圧縮、単一・複数参照を通した一貫した生成インターフェースです。
 
 `ImageRequest` 1 つで、参照なしのテキスト生成も、単一参照からの生成も、複数参照を統合した融合生成も表現できます（`Images` の枚数が解釈を決めます）。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。既存画像の編集も、編集対象を参照に、編集指示をプロンプトとして `Generate` を呼ぶだけです。
 
@@ -21,8 +21,8 @@
 ## ✨ 主な特徴 (Features)
 
 * **🖼️ Unified Generator**:
-  * `Generate` / `GenerateBatch` により、単一・複数参照画像の生成と一括生成を一貫して管理。
-  * レート制限（`WithRateLimit`）・並列度（`WithMaxConcurrency`）・リクエストタイムアウト（`WithRequestTimeout`）を内蔵。利用側で errgroup + rate.Limiter を組む必要はありません。
+  * `Generate` が単一・複数参照画像の生成を一貫して扱います（`Images` が 1 枚なら単一生成、複数枚なら融合、空ならテキストのみ）。
+  * 呼び出しガード（発射間隔・上限時間・重複排除）は**持ちません**。クォータはプロジェクト単位で操作の種類ごとではないため、画像生成だけを絞ってもテキスト生成が同じクォータを食い尽くせてしまいます。`go-gemini-client/callguard` の `Guard` を 1 つ作り、`ports.ImageGenerator` をデコレートしてテキスト生成と共有してください（下記「呼び出しガードの掛け方」）。
 * **🔗 Pluggable Reference Resolution**:
   * 参照画像の送り方を `ports.ReferenceResolver` として**アプリ側が選びます**。`gs://` の直接参照（`GCSResolver`、依存ゼロ）、取得してインライン（`FetchResolver`）、File API へ上げてキャッシュ（`FileAPIResolver`）を `ResolverChain` で組み合わせます（下記「参照画像の解決方法」）。
   * 依存は選んだ resolver だけが要求します。`gs://` しか使わない構成なら、取得・キャッシュの実装を一切渡す必要がありません。
@@ -50,7 +50,7 @@
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/gemini-image-kit/generator` | 画像生成の実装（`Generator`）と、参照画像の解決を担う resolver 群（`GCSResolver` / `FetchResolver` / `FileAPIResolver` / `ResolverChain`）。 |
-| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `BatchImageGenerator` / `ReferenceResolver` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。応答を保存するための小さなヘルパー `ExtensionByMIMEType` もここにあります。 |
+| `github.com/shouni/gemini-image-kit/ports` | 公開インターフェースと入出力モデル。`ImageGenerator` / `ReferenceResolver` / `ImageCacher` / `ContentReader` / `Downloader`、`ImageRequest` / `ImageResponse` / `GenerationOptions` / `ImageURI`。応答を保存するための小さなヘルパー `ExtensionByMIMEType` もここにあります。 |
 
 `generator` は `ports` のインターフェースに対して実装されており、利用側は `ports` の型だけを参照して差し替えやモックができます。
 
@@ -61,21 +61,51 @@
 ```go
 // 参照画像（0〜複数）と構成パラメータから1枚の画像を生成
 Generate(ctx, ports.ImageRequest) (*ports.ImageResponse, error)
-
-// 複数リクエストを、設定された並列度・レート制限の下で一括生成
-// 一部が失敗しても成功した結果は破棄されない
-// （失敗位置は nil、エラーは requests[i] の添字付きで errors.Join）
-GenerateBatch(ctx, []ports.ImageRequest) ([]*ports.ImageResponse, error)
 ```
 
-生成時の任意設定は `generator.Option` で渡します。
+生成時の任意設定は `generator.Option` で渡します（現在は `WithoutAutoSeed` のみ）。
 
 ```go
-g, err := generator.New(client, resolver,
-    generator.WithRateLimit(30*time.Second, 1), // 発射間隔とバースト
-    generator.WithMaxConcurrency(2),            // GenerateBatch の並列度
-    generator.WithRequestTimeout(5*time.Minute))
+g, err := generator.New(client, resolver)
 ```
+
+### 呼び出しガードの掛け方
+
+発射間隔・1 回あたりの上限時間・同一内容の重複排除は、このキットではなく**ワークフロー層**に置いてください。Gemini のクォータはプロジェクト単位で操作の種類ごとではないので、画像生成だけを絞ってもテキスト生成が同じクォータを消費してしまい、意味がないためです。
+
+`go-gemini-client/callguard` の `Guard` を 1 つ作り、テキスト生成と画像生成の両方に掛けます。
+
+```go
+// ワークフロー全体で 1 つ
+guard := callguard.New(
+    callguard.WithRateInterval(30*time.Second),
+    callguard.WithExecTimeout(5*time.Minute),
+)
+
+// ports.ImageGenerator をデコレートする
+type guardedGenerator struct {
+    inner ports.ImageGenerator
+    guard *callguard.Guard
+    group callguard.Group
+}
+
+func (g *guardedGenerator) Generate(ctx context.Context, req ports.ImageRequest) (*ports.ImageResponse, error) {
+    key := callguard.Key("image", req.Model, req.Prompt, callguard.SeedKey(req.Seed))
+    resp, err := callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*ports.ImageResponse, error) {
+        return g.inner.Generate(execCtx, req)
+    })
+    if err != nil {
+        return nil, err
+    }
+    // 戻り値は相乗りした呼び出し元全員で共有されるため、複製して返す
+    // （cloneImageResponse は利用側で用意してください）。
+    return cloneImageResponse(resp), nil
+}
+```
+
+同じ `guard` をテキスト生成のデコレータにも渡せば、両方が 1 つの発射間隔を共有します。実例は go-comic-kit / go-veo-orchestrator の `workflow/singleflight.go` にあります。
+
+**参照画像のアップロードはこのガードを通しません。** File API へのアップロードは生成呼び出しではなくクォータを消費しないため、生成の発射枠を消費させると参照画像 1 枚ごとに発射間隔ぶん待つことになります。アップロードの上限時間は `FileAPIResolverConfig.UploadTimeout` で別に指定してください。
 
 第 2 引数の `resolver` は**必須**です。参照画像をどう送るか（`gs://` を直接参照 / File API へ上げて使い回す / 取得してインライン）は運用上の判断なので、キットが既定で黙って選ぶことはしません。詳細は「参照画像の解決方法」を参照してください。
 
@@ -353,7 +383,7 @@ if err := os.WriteFile("edited.png", resp.Data, 0644); err != nil {
 | --- | --- |
 | `client` | `gemini.Generator`（`GenerateWithAttachments` の 1 メソッド）。**必須**。`gemini.BackendInspector` も満たす実クライアントを渡すと、安全設定と人物生成の既定値がバックエンドに応じて切り替わります |
 | `resolver` | `ports.ReferenceResolver`。**必須**（既定値なし） |
-| `opts` | `WithRateLimit` / `WithMaxConcurrency` / `WithRequestTimeout` / `WithoutAutoSeed` |
+| `opts` | `WithoutAutoSeed`（呼び出しガードは持ちません。「呼び出しガードの掛け方」を参照） |
 
 ### `generator.FetchResolverConfig`（取得してインライン送信）
 

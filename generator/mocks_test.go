@@ -26,8 +26,8 @@ const (
 // --- 生成クライアント ---
 
 // fakeClient は gemini.Generator（+ BackendInspector）のテストダブルです。
-// 送信されたプロンプト・添付・オプションを記録します。GenerateBatch は並行に
-// 呼び出すため、記録フィールドは mu で保護します（-race 対策）。
+// 送信されたプロンプト・添付・オプションを記録します。参照画像の解決が並行に
+// 走るため、記録フィールドは mu で保護します（-race 対策）。
 type fakeClient struct {
 	vertexAI bool
 	// generate を設定すると生成の挙動を差し替えられます（遅延・失敗の注入用）。
