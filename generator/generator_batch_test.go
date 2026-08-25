@@ -15,7 +15,7 @@ import (
 
 func batchRequest(prompt string) ports.ImageRequest {
 	return ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: prompt},
+		Model: "gemini-test-model", Prompt: prompt,
 	}
 }
 
@@ -132,7 +132,7 @@ func TestGenerateValidatesBeforeRateLimit(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	invalid := ports.ImageRequest{GenerationOptions: ports.GenerationOptions{Prompt: "p"}}
+	invalid := ports.ImageRequest{Prompt: "p"}
 	done := make(chan error, 1)
 	go func() { _, err := g.Generate(context.Background(), invalid); done <- err }()
 

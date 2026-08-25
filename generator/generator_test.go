@@ -57,12 +57,10 @@ func TestGenerateWithSingleReference(t *testing.T) {
 	g := newVertexGenerator(t, client)
 
 	resp, err := g.Generate(context.Background(), ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{
-			Model:           "gemini-test-model",
-			Prompt:          "test prompt",
-			GenerateOptions: gemini.GenerateOptions{ImageSize: "2K"},
-		},
-		Images: []ports.ImageURI{{ReferenceURL: "gs://bucket/ref.png"}},
+		Model:     "gemini-test-model",
+		Prompt:    "test prompt",
+		ImageSize: "2K",
+		Images:    []ports.ImageURI{{ReferenceURL: "gs://bucket/ref.png"}},
 	})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
@@ -84,11 +82,9 @@ func TestGenerateWithMultipleReferences(t *testing.T) {
 	g := newVertexGenerator(t, client)
 
 	resp, err := g.Generate(context.Background(), ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{
-			Model:           "gemini-test-model",
-			Prompt:          "fuse these",
-			GenerateOptions: gemini.GenerateOptions{AspectRatio: "16:9"},
-		},
+		Model:       "gemini-test-model",
+		Prompt:      "fuse these",
+		AspectRatio: "16:9",
 		Images: []ports.ImageURI{
 			{ReferenceURL: "gs://bucket/one.png"},
 			{ReferenceURL: "gs://bucket/two.png"},
@@ -118,8 +114,8 @@ func TestGenerateReturnsReferenceError(t *testing.T) {
 	}
 
 	_, err = g.Generate(context.Background(), ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "test prompt"},
-		Images:            []ports.ImageURI{{ReferenceURL: "https://example.com/source.png"}},
+		Model: "gemini-test-model", Prompt: "test prompt",
+		Images: []ports.ImageURI{{ReferenceURL: "https://example.com/source.png"}},
 	})
 	if err == nil {
 		t.Fatal("expected the reference failure")
@@ -151,7 +147,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	t.Run("Vertex AI: 指定された値を尊重する", func(t *testing.T) {
 		g := newGenerator(t, true)
 		opts := g.toOptions(ports.GenerationOptions{
-			GenerateOptions: gemini.GenerateOptions{PersonGeneration: gemini.PersonGenerationDontAllow},
+			PersonGeneration: gemini.PersonGenerationDontAllow,
 		})
 		if opts.PersonGeneration != gemini.PersonGenerationDontAllow {
 			t.Errorf("PersonGeneration = %q, want %q", opts.PersonGeneration, gemini.PersonGenerationDontAllow)
@@ -161,7 +157,7 @@ func TestToOptions_PersonGeneration(t *testing.T) {
 	t.Run("Gemini API: 指定されていても常に未設定", func(t *testing.T) {
 		g := newGenerator(t, false)
 		opts := g.toOptions(ports.GenerationOptions{
-			GenerateOptions: gemini.GenerateOptions{PersonGeneration: gemini.PersonGenerationAllowAll},
+			PersonGeneration: gemini.PersonGenerationAllowAll,
 		})
 		if opts.PersonGeneration != gemini.PersonGenerationUnspecified {
 			t.Errorf("PersonGeneration = %q, want unspecified", opts.PersonGeneration)
