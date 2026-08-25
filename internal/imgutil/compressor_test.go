@@ -13,8 +13,8 @@ import (
 func createDummyImageData(t *testing.T, format string) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-	for x := 0; x < 10; x++ {
-		for y := 0; y < 10; y++ {
+	for x := range 10 {
+		for y := range 10 {
 			img.Set(x, y, color.RGBA{255, 0, 0, 255})
 		}
 	}

@@ -187,8 +187,7 @@ func TestFileAPIResolverCancelDoesNotDecline(t *testing.T) {
 		// アップロードは呼び出し側のキャンセルでは止まらない設計（singleflight で
 		// 相乗りしている他の呼び出しを巻き添えにしないため）なので、Resolve が
 		// 返ったあとも走り続けます。バブルはその完了まで見届けてから閉じます。
-		time.Sleep(uploadDelay)
-		synctest.Wait()
+		synctest.Sleep(uploadDelay)
 		if got := files.uploads.Load(); got != 1 {
 			t.Errorf("uploads = %d, want 1（キャンセルした呼び出しの裏で完走する）", got)
 		}

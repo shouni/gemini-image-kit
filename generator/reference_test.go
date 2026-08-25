@@ -20,8 +20,8 @@ func newFusionRequest(urls ...string) ports.ImageRequest {
 		images = append(images, ports.ImageURI{ReferenceURL: url})
 	}
 	return ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "fuse"},
-		Images:            images,
+		Model: "gemini-test-model", Prompt: "fuse",
+		Images: images,
 	}
 }
 
@@ -165,8 +165,8 @@ func TestCollectImageAttachmentsSkipsEmpty(t *testing.T) {
 	g, client := newStubGenerator(t, resolver)
 
 	_, err := g.Generate(context.Background(), ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "p"},
-		Images:            []ports.ImageURI{{}},
+		Model: "gemini-test-model", Prompt: "p",
+		Images: []ports.ImageURI{{}},
 	})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
@@ -186,7 +186,7 @@ func TestAutoSeedFillsMissingSeedByDefault(t *testing.T) {
 	g, client := newStubGenerator(t, &stubResolver{})
 
 	resp, err := g.Generate(context.Background(), ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "a cat"},
+		Model: "gemini-test-model", Prompt: "a cat",
 	})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
@@ -210,10 +210,8 @@ func TestAutoSeedKeepsExplicitSeed(t *testing.T) {
 
 	seed := int64(4242)
 	resp, err := g.Generate(context.Background(), ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{
-			Model: "gemini-test-model", Prompt: "a cat",
-			GenerateOptions: gemini.GenerateOptions{Seed: &seed},
-		},
+		Model: "gemini-test-model", Prompt: "a cat",
+		Seed: &seed,
 	})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
@@ -229,7 +227,7 @@ func TestWithoutAutoSeedLeavesSeedUnset(t *testing.T) {
 	g, client := newStubGenerator(t, &stubResolver{}, WithoutAutoSeed())
 
 	if _, err := g.Generate(context.Background(), ports.ImageRequest{
-		GenerationOptions: ports.GenerationOptions{Model: "gemini-test-model", Prompt: "a cat"},
+		Model: "gemini-test-model", Prompt: "a cat",
 	}); err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}

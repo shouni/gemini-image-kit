@@ -2,8 +2,6 @@ package ports
 
 import (
 	"testing"
-
-	"github.com/shouni/go-gemini-client/gemini"
 )
 
 // TestGenerationOptionsPromotesGeminiFields は、埋め込んだ gemini.GenerateOptions の
@@ -11,15 +9,11 @@ import (
 // 互換性（req.ImageSize のようなアクセス）を支えています。
 func TestGenerationOptionsPromotesGeminiFields(t *testing.T) {
 	req := ImageRequest{
-		GenerationOptions: GenerationOptions{
-			Model:  "gemini-test",
-			Prompt: "a cat",
-			GenerateOptions: gemini.GenerateOptions{
-				ImageSize:   "2K",
-				AspectRatio: "16:9",
-			},
-		},
-		Images: []ImageURI{{ReferenceURL: "gs://bucket/ref.png"}},
+		Model:       "gemini-test",
+		Prompt:      "a cat",
+		ImageSize:   "2K",
+		AspectRatio: "16:9",
+		Images:      []ImageURI{{ReferenceURL: "gs://bucket/ref.png"}},
 	}
 
 	if req.ImageSize != "2K" {

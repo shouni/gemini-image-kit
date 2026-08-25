@@ -16,19 +16,6 @@ type ImageGenerator interface {
 	Generate(ctx context.Context, req ImageRequest) (*ImageResponse, error)
 }
 
-// BatchImageGenerator は、複数リクエストの一括生成を行う窓口です。
-//
-// 実装（generator.Generator）はレート制限・並列度・リクエストタイムアウトを
-// 内蔵しているため、利用側で errgroup + rate.Limiter を組む必要はありません。
-type BatchImageGenerator interface {
-	ImageGenerator
-	// GenerateBatch は複数のリクエストを設定された並列度・レート制限の下で実行し、
-	// 入力と同じ順序で結果を返します。一部が失敗しても成功した結果は破棄されず、
-	// 失敗した位置の要素だけが nil になります（エラーは requests[i] の添字を付けて
-	// errors.Join で集約されます）。
-	GenerateBatch(ctx context.Context, reqs []ImageRequest) ([]*ImageResponse, error)
-}
-
 // ImageCacher は、アップロード済み参照のキャッシュを提供するインターフェースです。
 //
 // 参照画像の解決は複数の画像に対して並行に走るため、実装は同時アクセス安全である
