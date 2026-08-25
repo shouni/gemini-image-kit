@@ -12,7 +12,7 @@
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットです。
 
-単なる API ラッパーではなく、生の SDK に無いものを足します。**参照画像をどう送るかを差し替えられる仕組み**（`gs://` を転送せず直接参照 / GCS・外部 URL から取得 / File API へ上げてキャッシュ）、インメモリ画像圧縮、単一・複数参照を通した一貫した生成インターフェースです。
+単なる API ラッパーではなく、生の SDK に無いものを足します。**参照画像をどう送るかを差し替えられる仕組み**（`gs://` を転送せず直接参照 / GCS・外部 URL から取得 / File API へ上げてキャッシュ）、インメモリ画像圧縮、そして単一・複数参照を 1 つにまとめた生成インターフェースです。
 
 `ImageRequest` 1 つで、参照なしのテキスト生成も、単一参照からの生成も、複数参照を統合した融合生成も表現できます（`Images` の枚数が解釈を決めます）。漫画制作だけでなく、商品画像、広告素材、キャラクター差分、ゲームアセット、SNS クリエイティブなどの生成ワークフローに利用できます。既存画像の編集も、編集対象を参照に、編集指示をプロンプトとして `Generate` を呼ぶだけです。
 
@@ -21,20 +21,20 @@
 ## ✨ 主な特徴 (Features)
 
 * **🖼️ Unified Generator**:
-  * `Generate` が単一・複数参照画像の生成を一貫して扱います（`Images` が 1 枚なら単一生成、複数枚なら融合、空ならテキストのみ）。
-  * 呼び出しガード（発射間隔・上限時間・重複排除）は**持ちません**。クォータはプロジェクト単位で操作の種類ごとではないため、画像生成だけを絞ってもテキスト生成が同じクォータを食い尽くせてしまいます。`go-gemini-client/callguard` の `Guard` を 1 つ作り、`ports.ImageGenerator` をデコレートしてテキスト生成と共有してください（下記「呼び出しガードの掛け方」）。
+  * 生成の窓口は `Generate` 1 つだけ。単一生成・融合・テキストのみを型で分けません。
+  * 呼び出しガード（発射間隔・上限時間・重複排除）は**持ちません**。ワークフロー層に置くのが正しい層です（下記「呼び出しガードの掛け方」）。
 * **🔗 Pluggable Reference Resolution**:
   * 参照画像の送り方を `ports.ReferenceResolver` として**アプリ側が選びます**。`gs://` の直接参照（`GCSResolver`、依存ゼロ）、取得してインライン（`FetchResolver`）、File API へ上げてキャッシュ（`FileAPIResolver`）を `ResolverChain` で組み合わせます（下記「参照画像の解決方法」）。
   * 依存は選んだ resolver だけが要求します。`gs://` しか使わない構成なら、取得・キャッシュの実装を一切渡す必要がありません。
   * File API 経路では、同一ソースへの同時アップロードが singleflight で1回にまとまります。同じ参照画像を並行して使っても File API 上に重複ファイルを作りません。
 * **🧩 Image Fusion Workflow**:
   * 複数の参照画像を収集し、プロンプトと組み合わせて1枚の画像を生成。
-  * 参照の解決は**並行実行**。GCS / HTTP の往復を伴う経路でも、参照が増えて待ち時間が積み上がりません。結果の並び順は入力順のまま保たれます。
+  * 参照の解決は**並行実行**で、結果の並び順は入力順のまま保たれます（下記「参照画像の解決は並行」）。
 * **☁️ Intelligent MIME Prediction**:
   * URI 参照では拡張子から `MIMEType` を推測し、インライン送信では実データの内容から判定します。
   * **推測できない拡張子では `MIMEType` を付けません**（サーバー側のコンテンツ判定に委ねます）。既定値を当てると PNG を JPEG と申告するような誤った型宣言になりうるためです。
 * **🛡️ Fetch Policy Injection**:
-  * 外部 URL 取得は `ports.Downloader` 経由に限定。SSRF 対策や許可ドメイン制御は、アプリケーション側で安全な Downloader を注入して適用します。
+  * 外部 URL の取得は `ports.Downloader` 経由に限定。SSRF 対策や許可ドメイン制御は、安全な実装を注入する形でアプリケーション側が決めます。
 * **⚡️ Optimized Image Handling**:
   * **Selective Optimization**: `Compress` を有効にすると PNG/GIF は JPEG へ再圧縮して送信サイズを抑えます。変換後の `MIMEType` も実データに合わせて送信します。
   * 圧縮対象でない形式はデコードせず、取得したストリームをそのままアップロードへ渡します。
@@ -68,6 +68,12 @@ Generate(ctx, ports.ImageRequest) (*ports.ImageResponse, error)
 ```go
 g, err := generator.New(client, resolver)
 ```
+
+第 2 引数の `resolver` は**必須**です。参照画像をどう送るか（`gs://` を直接参照 / File API へ上げて使い回す / 取得してインライン）は運用上の判断なので、キットが既定で黙って選ぶことはしません。詳細は「参照画像の解決方法」を参照してください。
+
+利用側が依存するポートは `ports.ImageGenerator`（1 メソッド）です。
+
+このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
 
 ### 呼び出しガードの掛け方
 
@@ -106,12 +112,6 @@ func (g *guardedGenerator) Generate(ctx context.Context, req ports.ImageRequest)
 同じ `guard` をテキスト生成のデコレータにも渡せば、両方が 1 つの発射間隔を共有します。実例は go-comic-kit / go-veo-orchestrator の `workflow/singleflight.go` にあります。
 
 **参照画像のアップロードはこのガードを通しません。** File API へのアップロードは生成呼び出しではなくクォータを消費しないため、生成の発射枠を消費させると参照画像 1 枚ごとに発射間隔ぶん待つことになります。アップロードの上限時間は `FileAPIResolverConfig.UploadTimeout` で別に指定してください。
-
-第 2 引数の `resolver` は**必須**です。参照画像をどう送るか（`gs://` を直接参照 / File API へ上げて使い回す / 取得してインライン）は運用上の判断なので、キットが既定で黙って選ぶことはしません。詳細は「参照画像の解決方法」を参照してください。
-
-利用側が依存するポートは `ports.ImageGenerator`（1 メソッド）です。
-
-このライブラリの公開 API に `google.golang.org/genai` の型は現れません。生成 SDK の型は `go-gemini-client` の内側に閉じています。
 
 ### `ports.ImageResponse` の中身
 
@@ -229,7 +229,7 @@ func main() {
 <details>
 <summary>上の例で使っている補助実装（最小のプレースホルダ）</summary>
 
-`Reader` / `Downloader` / `Cache` は注入する前提なので、動かすための最小実装を載せます。実運用では SSRF 対策済みの HTTP クライアント、GCS 読み取り、TTL 付きキャッシュ（`ttlcache` など）に置き換えてください。`Cache` は参照解決が並行に走るため、**同時アクセス安全な実装**である必要があります。
+`Reader` / `Downloader` / `Cache` は注入する前提なので、動かすための最小実装を載せます。実運用では、上の注意を踏まえた HTTP クライアント、GCS 読み取り、TTL 付きキャッシュ（`ttlcache` など）に置き換えてください。
 
 ```go
 type httpDownloader struct {
@@ -446,8 +446,6 @@ generator.NewGCSResolver()
 | `FileAPIResolver` + Vertex AI | `ErrGeminiAPIRequired` | Vertex に File API が無いのでアップロードが必ず失敗し、毎回インラインへ落ちる。**生成は成功する**ぶん気付きにくく、`gs://` を 2 回ダウンロードし続ける |
 
 判定できるのは `gemini.BackendInspector` を満たすクライアントだけで、バックエンドを申告しないクライアント（テスト用フェイクなど）は素通しします。
-
-File API 上のファイルには保持期限があるため、`CacheTTL` はそれより短く設定してください。
 
 ### 参照画像の解決は並行
 

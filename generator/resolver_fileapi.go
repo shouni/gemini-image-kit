@@ -25,7 +25,8 @@ type FileAPIResolverConfig struct {
 	// Files は File API へのアップロード先です（*gemini.Client が満たします）。必須。
 	Files gemini.FileManager
 	// Reader は gs:// の取得に、Downloader は http(s):// の取得に使います。
-	// アップロードするにはまず取得が要るため、どちらも必須です。
+	// アップロードするにはまず取得が要るため、どちらも必須です
+	// （取得先の検証責務は ports.Downloader を参照）。
 	Reader     ports.ContentReader
 	Downloader ports.Downloader
 	// Cache はアップロード済み URI の再利用先です。必須。
@@ -41,8 +42,8 @@ type FileAPIResolverConfig struct {
 	// ここで既定値を差し込むと、呼び出し側のキャッシュ設定を上書きしてしまいます。
 	//
 	// 注意: File API 上のファイルにはサーバー側の保持期限があります。実装側の既定が
-	// 「無期限」や保持期限より長い設定になっていると、失効した files/... の URI を
-	// 参照し続けて生成が失敗します。保持期限より短い値を明示するのが安全です。
+	// 「無期限」や保持期限より長い設定になっていると、失効した URI を参照し続けて
+	// 生成が失敗します。保持期限より短い値を明示するのが安全です。
 	CacheTTL time.Duration
 	// UploadTimeout はアップロード1回あたりの制限時間です。0 以下なら DefaultUploadTimeout。
 	//

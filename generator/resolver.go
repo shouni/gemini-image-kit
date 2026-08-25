@@ -109,10 +109,7 @@ func (r *GCSResolver) Resolve(_ context.Context, uri ports.ImageURI) (gemini.Att
 // FetchResolverConfig は FetchResolver の依存と設定です。
 type FetchResolverConfig struct {
 	// Reader は gs:// の取得に、Downloader は http(s):// の取得に使います。
-	// どちらも必須です。
-	//
-	// 注意: Downloader には呼び出し側が任意入力した URL がそのまま渡ります。
-	// SSRF 対策とドメイン許可リストは意図的に呼び出し側の責務です。
+	// どちらも必須です（取得先の検証責務は ports.Downloader を参照）。
 	Reader     ports.ContentReader
 	Downloader ports.Downloader
 	// FetchTimeout は取得1回あたりの制限時間です。0 以下なら DefaultFetchTimeout。

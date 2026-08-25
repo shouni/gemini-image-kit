@@ -19,11 +19,11 @@ var _ ports.ImageGenerator = (*Generator)(nil)
 
 // Generator は画像生成の実装です。
 //
-// 発射間隔・上限時間・重複排除といった呼び出しガードは**持ちません**。それらは
-// ワークフロー層の関心だからです。クォータはプロジェクト単位で操作の種類ごとでは
-// ないため、画像生成だけを絞ってもテキスト生成が同じクォータを食い尽くせてしまい、
-// 意味がありません。下流（go-comic-kit / go-veo-orchestrator）は ports.ImageGenerator を
-// callguard.Do でデコレートし、テキスト生成と 1 つの Guard を共有しています。
+// 発射間隔・上限時間・重複排除といった呼び出しガードは**持ちません**。クォータは
+// プロジェクト単位で操作の種類ごとではないため、画像生成だけを絞ってもテキスト生成が
+// 同じクォータを食い尽くせてしまうからです。ガードは ports.ImageGenerator を
+// go-gemini-client/callguard でデコレートし、テキスト生成と 1 つの Guard を
+// 共有する形でワークフロー層に置いてください。
 type Generator struct {
 	aiClient   gemini.Generator
 	resolver   ports.ReferenceResolver

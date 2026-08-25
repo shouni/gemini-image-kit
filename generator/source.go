@@ -66,20 +66,13 @@ func (f sourceFetcher) open(ctx context.Context, rawURL string) (io.ReadCloser, 
 	return f.downloader.GetStream(ctx, rawURL)
 }
 
-// withTimeout は取得 1 回分の制限時間を掛けた context を返します。
-func (f sourceFetcher) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	if f.timeout <= 0 {
-		return ctx, func() {}
-	}
-	return context.WithTimeout(ctx, f.timeout)
-}
-
 // readAll は参照画像を丸ごと読み込みます。
 //
 // 上限なしの io.ReadAll は、遅い・巨大なリモートに対してメモリと時間を際限なく
 // 費やすため、時間（timeout）とバイト数（maxBytes）の両方で縛ります。
 func (f sourceFetcher) readAll(ctx context.Context, rawURL string) ([]byte, error) {
-	fetchCtx, cancel := f.withTimeout(ctx)
+	// timeout は newSourceFetcher が必ず正の値にするため、無効化の分岐は要らない。
+	fetchCtx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 
 	rc, err := f.open(fetchCtx, rawURL)

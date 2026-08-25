@@ -15,10 +15,8 @@ import (
 //
 // 参照の解決は resolver 次第で GCS / HTTP の往復を伴うため並行に実行します。融合生成
 // では参照が増えるほど直列の待ち時間がそのまま積み上がるためです。結果は入力順のまま
-// 返します（参照画像の並び順はモデルの解釈に影響します）。
-//
-// 並行実行するため、注入する ports.ReferenceResolver は同時アクセス安全で
-// ある必要があります。
+// 返します（参照画像の並び順はモデルの解釈に影響します）。resolver に課される
+// 同時アクセス安全性の要求は ports.ReferenceResolver に書いてあります。
 func (g *Generator) collectImageAttachments(ctx context.Context, uris []ports.ImageURI) ([]gemini.Attachment, error) {
 	if len(uris) <= 1 {
 		return g.collectSequentially(ctx, uris)
