@@ -1,3 +1,8 @@
+# 実体は shouni/workflows が持つ。ジョブの構成・govulncheck の起動方法・
+# check-latest を付ける理由は、そちらの README.md「設計の判断」にある。
+#
+# @v1 は張り替えられる移動タグ。Dependabot はジョブレベルの uses: を更新しないため
+# （実測。詳細は workflows の README）、不変タグで固定しても自動では上がらない。
 name: CI
 
 on:
@@ -14,95 +19,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build & Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build
-        run: go build ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Gofmt check
-        run: test -z "$(gofmt -l .)"
-
-      # -shuffle=on はテスト間の暗黙の実行順序依存を検出します。
-      - name: Test (with race detector)
-        run: go test -shuffle=on -race -coverprofile=coverage.out -covermode=atomic ./...
-
-      - name: Coverage summary
-        run: |
-          go tool cover -func=coverage.out | tee coverage.txt
-          {
-            echo "### Coverage"
-            echo '```'
-            tail -n 1 coverage.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  fuzz:
-    name: Fuzz (smoke)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
+  ci:
+    uses: shouni/workflows/.github/workflows/go-ci.yml@v1
+    with:
+      coverage: true
       # 画像バイナリは外部から与えられるため、判定と圧縮の経路を毎回ファジングする。
-      # 失敗した場合は再現用シードを internal/imgutil/testdata/fuzz/ にコミットして回帰テスト化する。
-      - name: Fuzz DetectMIMEType
-        run: go test ./internal/imgutil -run '^$' -fuzz FuzzDetectMIMEType -fuzztime 60s
-
-      - name: Fuzz CompressToJPEG
-        run: go test ./internal/imgutil -run '^$' -fuzz FuzzCompressToJPEG -fuzztime 60s
-
-      - name: Upload fuzz failures
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: fuzz-corpus
-          path: internal/imgutil/testdata/fuzz/
-          retention-days: 7
-          if-no-files-found: ignore
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.13.1
-
-  vulncheck:
-    name: govulncheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: golang/govulncheck-action@v1
-        with:
-          go-version-file: go.mod
-          repo-checkout: false
+      fuzz-targets: "./internal/imgutil#FuzzDetectMIMEType ./internal/imgutil#FuzzCompressToJPEG"
+      fuzz-time: 60s
