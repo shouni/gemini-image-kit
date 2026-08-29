@@ -1,14 +1,14 @@
 # 🎨 Gemini Image Kit
 
 [![CI](https://github.com/shouni/gemini-image-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/gemini-image-kit/actions/workflows/ci.yml)
-[![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/gemini-image-kit)](https://golang.org/)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
+[![Language](https://img.shields.io/badge/Language-Go-blue)](https://go.dev/)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/gemini-image-kit)](https://go.dev/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/gemini-image-kit)](https://github.com/shouni/gemini-image-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/gemini-image-kit.svg)](https://pkg.go.dev/github.com/shouni/gemini-image-kit)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 
-## 🚀 概要 (About) - アセット運用を最適化する画像生成コア
+## 🚀 概要 (About) - 窓口は Generate 1 つ、参照画像の送り方はアプリが選ぶ
 
 **Gemini Image Kit** は、Google Gemini API を利用した画像生成を、Go言語でより直感的、かつ堅牢に実装するためのツールキットです。
 
