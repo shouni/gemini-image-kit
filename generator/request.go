@@ -12,7 +12,7 @@ import (
 
 // negativePromptSeparator は、ネガティブプロンプトをプロンプト本文へ連結する際の区切りです。
 //
-// **この描画は互換性の契約です。** ネガティブプロンプトは API のフィールドではなく、
+// この描画は互換性の契約です。ネガティブプロンプトは API のフィールドではなく、
 // 下流のプロンプト実装（ap-story のデザインプロンプト等）がこの区切りの見た目に
 // 依存しているため、変更しないでください。
 const negativePromptSeparator = "\n\n[Negative Prompt]\n"
