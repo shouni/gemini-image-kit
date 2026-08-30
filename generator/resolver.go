@@ -85,7 +85,7 @@ func (c *ResolverChain) requiredBackend() backend {
 
 // GCSResolver は gs:// URI を、バイト列を転送せずそのまま参照させます。
 //
-// **Vertex AI 専用です。** Vertex AI は gs:// をモデル側で解決できますが、Gemini API
+// Vertex AI 専用です。Vertex AI は gs:// をモデル側で解決できますが、Gemini API
 // バックエンドはできないため、そちらへ渡すと生成時に不可解な失敗をします。New は
 // 構築時に ErrVertexAIRequired で弾きます。
 //

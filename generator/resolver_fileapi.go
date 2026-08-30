@@ -37,7 +37,7 @@ type FileAPIResolverConfig struct {
 	Cache ports.ImageCacher
 	// CacheTTL はアップロード済みファイルの参照を保持する期間です。
 	//
-	// **0 は補完しません。** 利用側が使っている ttlcache では 0 が `ttlcache.DefaultTTL`
+	// 0 は補完しません。利用側が使っている ttlcache では 0 が `ttlcache.DefaultTTL`
 	// そのもので、「キャッシュ側に設定した既定の有効期間に従う」という意味を持ちます。
 	// ここで既定値を差し込むと、呼び出し側のキャッシュ設定を上書きしてしまいます。
 	//
@@ -67,7 +67,7 @@ type FileAPIResolverConfig struct {
 
 // FileAPIResolver は参照画像を Gemini File API へアップロードし、以降は URI で参照します。
 //
-// **Gemini API バックエンド専用です。** Vertex AI に File API はありません。
+// Gemini API バックエンド専用です。Vertex AI に File API はありません。
 //
 // 同じ参照画像を繰り返し使うワークロード（同じキャラクターを何枚もの生成で使う等）では、
 // 毎回バイト列を送るより安く済みます。逆に参照が毎回異なる使い捨てのワークロードでは、
