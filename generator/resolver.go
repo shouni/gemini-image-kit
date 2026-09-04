@@ -47,6 +47,10 @@ func requiredBackend(r ports.ReferenceResolver) backend {
 //
 // 次へ進む合図は ports.ErrResolverNotApplicable（管轄外）だけで、それ以外のエラーは
 // その場で返します。誰も扱えなければ ErrUnresolvedReference になります。
+//
+// FetchResolver は最後段に置いてください。FileAPIResolver はアップロードに失敗すると
+// 辞退して次の resolver に委ねるため（FileAPIResolver.Resolve を参照）、後ろに受け皿が
+// 無いとその辞退が行き先を失い、生成が ErrUnresolvedReference で止まります。
 type ResolverChain struct {
 	resolvers []ports.ReferenceResolver
 }
