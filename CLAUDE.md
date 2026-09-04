@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Go library for image generation via Gemini / Vertex AI, built on top of `github.com/shouni/go-gemini-client`. It adds what the raw client lacks: pluggable reference-image resolution (direct `gs://` reference, GCS/HTTP fetch, Gemini File API upload with cache-backed reuse), in-memory JPEG compression, request-level rate limiting / concurrency / timeouts, and unified single/multi reference-image generation. No main package.
+Go library for image generation via Gemini / Vertex AI, built on top of `github.com/shouni/go-gemini-client`. It adds what the raw client lacks: pluggable reference-image resolution (direct `gs://` reference, GCS/HTTP fetch, Gemini File API upload with cache-backed reuse), in-memory JPEG compression, and unified single/multi reference-image generation. It holds no call guards (see below). No main package.
+
+**The sibling is `genai-kit`'s `imagegen`, and the split is the reference path.** That one is Vertex-only and takes `gs://` alone, which the model resolves server-side — no fetch, no upload, no bytes on the wire. This kit exists for the cases that path cannot serve: HTTP fetch, a size cap, re-compression, and File API upload with a cache. Keep the boundary stated in `public-docs/docs/libraries.md`; a consumer that only ever passes `gs://` should be pointed there rather than having a zero-dependency `gs://` path grown here to match.
 
 ## Commands
 
@@ -49,12 +51,13 @@ Two public packages plus one internal, in a ports-and-adapters layout:
 - **Reference images are resolved concurrently** (`reference.go: collectImageAttachments`), because fusion requests can pay one GCS/HTTP round trip per reference (depending on the resolver). Order is preserved (it affects how the model reads the references), a single reference skips the goroutines entirely, and the reported failure is the *first by input index* — with `context.Canceled` deselected, since one failure cancels the rest and would otherwise mask the real cause.
 - **`ImageResponse.UsedSeed` is the requested seed, not one the API reports back** — the API never returns it. **Auto-seeding is the default since v1.13**: with no `Seed` in the request the kit picks one before sending, so `UsedSeed` is always a truthful reproducibility record (it used to be opt-in via `WithAutoSeed`, and the consumers that forgot it recorded a useless 0). `WithoutAutoSeed()` restores the old behavior for callers that manage seeds themselves. Seeds are bounded to int32 because `go-gemini-client` rejects anything wider (`ErrInvalidSeed`).
 - **`ImageResponse` carries `Model`, `Prompt`, and `Usage`** alongside the bytes, so consumers can record cost and provenance without re-deriving them from the request.
+- **There is no mask-based edit API, and there is nothing to add one from.** Editing goes through `Generate` — the image to edit as a reference, the instruction as the prompt — on a conversational image model. Vertex AI Imagen's mask-based edit models (`imagen-3.0-capability-001` and the rest of that family) were retired on 2026-06-30 and no successor "capability" model was published, so a caller that needs an explicit mask cannot be served here at all; say so rather than approximating it with a prompt.
 
 ## Conventions
 
 - Comments are largely Japanese; sentinel errors are English with an `imagekit:` prefix — match the surrounding file.
 - Tests use testify + hand-written mocks in `generator/mocks_test.go`: `fakeClient` records what was sent to the model (and injects failures/delays via its `generate` hook), `stubResolver` fakes reference resolution, and `newStubGenerator` wires both. Nothing touches the network.
-- README.md documents the public API and quick-start wiring (memory cache, downloader examples) — update it when `ports` types or constructor signatures change.
+- README.md follows `public-docs/docs/library-readme-convention.md`: scope and traps only, one "first call" code example, signatures in godoc and reasoning here. It no longer carries field/option/error tables — when `ports` types or constructor signatures change, the doc comments are what has to be updated, not a table.
 
 ## genai SDK boundary
 
