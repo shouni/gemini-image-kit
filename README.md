@@ -128,6 +128,11 @@ os.WriteFile("output"+ports.ExtensionByMIMEType(resp.MimeType), resp.Data, 0o644
 
 分岐や応用（Vertex AI + `gs://`、複数参照の融合、既存画像の編集）は
 [pkg.go.dev](https://pkg.go.dev/github.com/shouni/gemini-image-kit) の各型のドキュメントにあります。
+**踏むと高くつく点も、それぞれの godoc に書いてあります** — resolver の典型的な並べ方（`generator.New`）、
+アップロード失敗時に辞退するので `FetchResolver` を最後段に置くこと（`ResolverChain` / `FileAPIResolver.Resolve`）、
+参照画像のアップロードを呼び出しガードに通さないこと（`FileAPIResolver`）、相乗りした呼び出し元が
+同じ `*ImageResponse` を共有すること（`generator.Generator`）、resolver とキャッシュが同時アクセス安全で
+なければならないこと（`ports.ReferenceResolver` / `ports.ImageCacher`）。
 
 <details>
 <summary>上の例で使っている補助実装（最小のプレースホルダ）</summary>
@@ -183,50 +188,6 @@ func (c *memoryCache) Set(key string, value any, ttl time.Duration) {
 ```
 
 </details>
-
----
-
-## 🎯 参照画像の解決方法
-
-`ImageURI` 1 件をどう送るかは、注入した `ports.ReferenceResolver` が決めます。典型的な並べ方は 3 つです。
-
-```go
-// Vertex AI: gs:// は転送せず直接参照、それ以外は取得してインライン
-generator.NewResolverChain(generator.NewGCSResolver(), fetchResolver)
-
-// Gemini API: File API へ上げて使い回し、失敗したら取得してインライン
-generator.NewResolverChain(fileAPIResolver, fetchResolver)
-
-// 参照が gs:// だけの構成（取得もキャッシュも要りません）
-generator.NewGCSResolver()
-```
-
-`ResolverChain` が次へ進むのは `ports.ErrResolverNotApplicable`（管轄外）を返した resolver だけで、
-取得失敗のような実エラーはその場で返します — 次へ流すと、ネットワーク障害が「参照を解決できません」に
-すり替わって原因が消えるためです。誰も扱えなければ `ErrUnresolvedReference`（経路の設定漏れ）になります。
-
-**`FileAPIResolver` はアップロードに失敗すると警告ログを出して辞退し、次の resolver に委ねます。**
-アップロードは送信量を減らすための最適化であって正しさの要件ではないためで、失敗しても生成は続きます
-（ただし失敗の原因が呼び出し側のキャンセルであれば、辞退せずそのまま返します）。
-`FetchResolver` を最後段に置かないと、この経路が受け皿を失います。
-
-参照の解決は複数画像に対して**並行**に走ります。注入する resolver とそのキャッシュは同時アクセス安全で
-なければなりません。並び順は入力順のまま保たれます（モデルの解釈に影響するためです）。
-
----
-
-## 🚥 呼び出しガードの掛け方
-
-発射間隔・1 回あたりの上限時間・同一内容の重複排除は、このキットではなく**ワークフロー層**に置いてください。
-Gemini のクォータはプロジェクト単位で操作の種類ごとではないため、画像生成だけを絞ってもテキスト生成が同じ
-クォータを消費してしまいます。`go-gemini-client/callguard` の `Guard` を 1 つ作り、`ports.ImageGenerator` を
-デコレートして、テキスト生成と同じ `Guard` を共有させるのが定型です。
-**相乗りした呼び出し元は同じ `*ImageResponse` を共有する**ので、返す前に複製してください。
-
-**参照画像のアップロードはこのガードを通さないでください。** File API へのアップロードは生成呼び出しでは
-なくクォータを消費しないため、生成の発射枠を消費させると参照画像 1 枚ごとに発射間隔ぶん待つことになります
-（5 枚・30 秒間隔なら、生成が始まる前に 2 分半）。アップロードの上限時間は
-`FileAPIResolverConfig.UploadTimeout` で別に指定します。
 
 ---
 
