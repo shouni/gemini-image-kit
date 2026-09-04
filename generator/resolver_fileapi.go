@@ -72,6 +72,12 @@ type FileAPIResolverConfig struct {
 // 同じ参照画像を繰り返し使うワークロード（同じキャラクターを何枚もの生成で使う等）では、
 // 毎回バイト列を送るより安く済みます。逆に参照が毎回異なる使い捨てのワークロードでは、
 // アップロードの往復と File API 上のファイルが無駄になるため FetchResolver が向きます。
+//
+// アップロードは、生成に掛ける呼び出しガード（go-gemini-client/callguard）を通さないで
+// ください。File API へのアップロードは生成呼び出しではなくクォータを消費しないため、
+// 生成の発射枠を消費させると参照画像 1 枚ごとに発射間隔ぶん待つことになります
+// （参照 5 枚・発射間隔 30 秒なら、生成が始まる前に 2 分半）。アップロード 1 回あたりの
+// 上限時間は FileAPIResolverConfig.UploadTimeout で別に指定します。
 type FileAPIResolver struct {
 	files       gemini.FileManager
 	fetcher     sourceFetcher

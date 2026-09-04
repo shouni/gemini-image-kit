@@ -24,6 +24,10 @@ var _ ports.ImageGenerator = (*Generator)(nil)
 // 同じクォータを食い尽くせてしまうからです。ガードは ports.ImageGenerator を
 // go-gemini-client/callguard でデコレートし、テキスト生成と 1 つの Guard を
 // 共有する形でワークフロー層に置いてください。
+//
+// callguard の重複排除でひとつの実行に相乗りした呼び出し元は、同じ
+// *ports.ImageResponse を共有します。デコレートする側は、呼び出し元へ返す前に
+// 複製してください。複製しないと、1 人が書き換えた内容が相乗りした全員に伝わります。
 type Generator struct {
 	aiClient   gemini.Generator
 	resolver   ports.ReferenceResolver
