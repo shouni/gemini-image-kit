@@ -1,12 +1,39 @@
 # 🎨 Gemini Image Kit
 
 [![CI](https://github.com/shouni/gemini-image-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/gemini-image-kit/actions/workflows/ci.yml)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
+[![Status](https://img.shields.io/badge/Status-Archived-lightgrey)](#)
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://go.dev/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/gemini-image-kit)](https://go.dev/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/gemini-image-kit)](https://github.com/shouni/gemini-image-kit/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/gemini-image-kit.svg)](https://pkg.go.dev/github.com/shouni/gemini-image-kit)
+
+> [!IMPORTANT]
+> **このリポジトリはアーカイブされました。後継は [genai-kit](https://github.com/shouni/genai-kit) の
+> `imagegen` パッケージです。**
+>
+> 利用者は genai-kit の `imagegen` へ移行済みです。更新は行われません。
+> 以下の記述は凍結時点のものです。
+>
+> **移行のしかた**
+>
+> | このライブラリ | genai-kit/imagegen |
+> | --- | --- |
+> | `generator.New(client, generator.NewGCSResolver())` | `imagegen.New(client)` |
+> | `ports.ImageRequest` / `ImageResponse` | `imagegen.Request` / `Response`（`MimeType` は `MIMEType`） |
+> | `ports.ExtensionByMIMEType` | `imagegen.ExtensionByMIMEType` |
+> | `Images: []ImageURI{{ReferenceURL: "gs://…"}}` | `Images: []string{"gs://…"}` |
+> | 取得済みのバイト列を送る | `References: []gemini.Attachment{{Data: …, MIMEType: …}}` |
+>
+> **参照画像の解決は呼び出し側の仕事になりました。** `ReferenceResolver` / `ResolverChain` /
+> `FetchResolver` / `FileAPIResolver` と、それに付随する取得・サイズ上限・再圧縮・
+> アップロードのキャッシュは genai-kit へ移植していません。`gs://` はモデル側が解決するので
+> 取得が不要で、http(s) は呼び出し側が取得の経路・タイムアウト・サイズ上限を決めて
+> `Request.References` へバイト列で渡します（取得タイムアウト・サイズ上限・内容からの
+> MIME 判定を含めて 150 行ほどの実装です）。
+>
+> Gemini API の File API 経由の経路（`FileAPIResolver`）は移植先がありません。genai-kit が
+> File API を持たないためで、実際に使っている利用者がいないことを確認して外しました。
 
 ## 🚀 概要 (About) - 窓口は Generate 1 つ。参照画像の送り方はアプリが選ぶ
 
@@ -18,13 +45,6 @@
 **呼び出しガード（発射間隔・上限時間・重複排除）と、生成物の保存は持ちません。** 前者はワークフロー層、
 後者は呼び出し側の担当です。外部 URL の取得も `ports.Downloader` の注入に限定しており、SSRF 対策と
 ドメイン許可リストはアプリケーションが決めます。
-
-### `genai-kit` の `imagegen` との使い分け
-
-参照画像の**取得・サイズ上限・再圧縮・アップロードのキャッシュが要る**経路を担当するのがこちらです。
-Vertex AI だけを使い、参照画像が `gs://` で足りるなら、モデル側が `gs://` を解決するので転送そのものが
-発生しません — その構成は [genai-kit](https://github.com/shouni/genai-kit) の `imagegen` を使ってください。
-本キットは Gemini API（API キー方式）も扱い、File API へ上げて使い回す経路を持ちます。
 
 ---
 
@@ -50,7 +70,7 @@ Vertex AI だけを使い、参照画像が `gs://` で足りるなら、モデ�
 * **応答は記録に足りる** — `ImageResponse` は画像バイト列に加えて `Model` / `Prompt` / `Usage` を返すので、
   コスト集計や生成条件の記録にリクエストを持ち回る必要がありません。
 * **公開 API に `google.golang.org/genai` の型は現れません** — 生成 SDK の型は
-  [go-gemini-client](https://github.com/shouni/go-gemini-client) の内側に閉じています。
+  go-gemini-client の内側に閉じています。
 
 ---
 
@@ -193,8 +213,8 @@ func (c *memoryCache) Set(key string, value any, ttl time.Duration) {
 
 ## 🤝 依存関係 (Dependencies)
 
-* [shouni/go-gemini-client](https://github.com/shouni/go-gemini-client) - Gemini API / Vertex AI の
-  バックエンドを抽象化するクライアント
+* shouni/go-gemini-client - Gemini API / Vertex AI の
+  バックエンドを抽象化するクライアント（こちらもアーカイブ済み。後継は genai-kit）
 * [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
   （`go-gemini-client` 経由の間接依存。公開 API には現れません）
 
